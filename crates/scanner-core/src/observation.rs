@@ -25,7 +25,7 @@ pub enum ObservationSource {
     Illumination,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Timestamp {
     pub micros: u64,
