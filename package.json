@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.9.1",
-  "engines": { "node": ">=24.21.0" },
+  "engines": {
+    "node": ">=24.21.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
@@ -15,7 +17,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",
-    "lit": "3.3.3"
+    "lit": "3.3.3",
+    "workbox-window": "7.4.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",
