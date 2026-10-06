@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod guidance;
 pub mod observation;
 pub mod session;
+pub mod spatial;
 pub mod structural;
 
 pub use guidance::{choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate, MeasurementAction};
@@ -13,6 +14,10 @@ pub use observation::{
     RawObservation, Timestamp, UserCorrespondenceObservation, Vec3, CAPTURE_SCHEMA_VERSION,
 };
 pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
+pub use spatial::{
+    ConstraintEvaluation, ConstraintRejection, ConstraintSource, SessionWorld, SolveReport,
+    SpatialConstraint, SpatialConstraintKind, Uncertainty,
+};
 pub use structural::{
     LockState, StructuralSurface, StructuralSurfaceKind, SurfaceEvent, SurfaceTransitionError,
 };
