@@ -28,4 +28,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
-      - run: cargo check --manifest-path crates/scanner-core/Cargo.toml
+      - run: cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets
