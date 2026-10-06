@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "useDefineForClassFields": true,
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
