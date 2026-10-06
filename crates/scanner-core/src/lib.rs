@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+pub mod guidance;
+pub mod observation;
+pub mod session;
+pub mod structural;
+
+pub use guidance::{choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate, MeasurementAction};
+pub use observation::{
+    CameraFrameObservation, CameraIntrinsics, ClockDomain, DepthObservation, ExposureMetadata,
+    IlluminationMode, IlluminationObservation, ImuObservation, ObservationEnvelope,
+    ObservationLedger, ObservationRejection, ObservationSource, Pose, Quaternion, RangingObservation,
+    RawObservation, Timestamp, UserCorrespondenceObservation, Vec3, CAPTURE_SCHEMA_VERSION,
+};
+pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
+pub use structural::{
+    LockState, StructuralSurface, StructuralSurfaceKind, SurfaceEvent, SurfaceTransitionError,
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SpatialCapability {
@@ -19,33 +36,4 @@ pub struct PlatformCapabilities {
     pub runtime: String,
     pub mobile: bool,
     pub capabilities: Vec<SpatialCapability>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LockState {
-    Candidate,
-    Stable,
-    SuggestedLock,
-    UserConfirmed,
-    Locked,
-    Challenged,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Vec3 {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StructuralSurface {
-    pub id: String,
-    pub kind: String,
-    pub normal: Vec3,
-    pub offset_meters: f64,
-    pub confidence: f32,
-    pub lock_state: LockState,
 }
