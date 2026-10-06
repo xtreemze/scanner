@@ -45,7 +45,7 @@ The preferred ownership chain is:
       -> presentation models
       -> UI / platform projections
 
-See [system architecture](docs/architecture/system.md) and [guidance/confidence](docs/architecture/guidance.md).
+See [system architecture](docs/architecture/system.md), [guidance/confidence](docs/architecture/guidance.md), and the [raw observation/domain authority ADR](docs/decisions/0003-raw-observations-and-domain-authority.md).
 
 ## Development
 
