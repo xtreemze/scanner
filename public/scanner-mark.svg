@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scanner">
+  <rect width="512" height="512" rx="112" fill="#0b0d10"/>
+  <path d="M116 188v-44a28 28 0 0 1 28-28h44M324 116h44a28 28 0 0 1 28 28v44M396 324v44a28 28 0 0 1-28 28h-44M188 396h-44a28 28 0 0 1-28-28v-44" fill="none" stroke="#f5f7fa" stroke-width="24" stroke-linecap="round"/>
+  <path d="M168 286l88-104 88 104-88 54z" fill="none" stroke="#9fe8d7" stroke-width="18" stroke-linejoin="round"/>
+  <circle cx="256" cy="182" r="12" fill="#f5f7fa"/>
+</svg>
