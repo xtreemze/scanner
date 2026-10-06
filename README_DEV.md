@@ -17,6 +17,12 @@ Scanner currently consists of a Vite/Lit PWA, a Tauri native host, and a Rust do
     pnpm build
     pnpm dev
 
+## Core domain
+
+    cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets
+
+The Rust core owns capture/session contracts, structural state transitions, and deterministic guidance policy. UI and platform adapters consume these contracts but do not become parallel authorities.
+
 ## Tauri
 
 Install the current Tauri platform prerequisites, then:
@@ -27,4 +33,4 @@ Mobile targets are intentionally scaffolded but sensor adapters are not implemen
 
 ## Verification claims
 
-A successful web build proves only type checking and Vite production bundling. Tauri desktop builds, Android/iOS compilation, PWA installation, camera/IMU/depth capture, and physical multi-device calibration require separate evidence.
+A successful web build proves only type checking and Vite production bundling. Passing scanner-core tests proves only the deterministic Rust domain contracts covered by those tests. Tauri desktop builds, Android/iOS compilation, PWA installation, camera/IMU/depth capture, and physical multi-device calibration require separate evidence.
