@@ -52,5 +52,7 @@ jobs:
         with:
           toolchain: '1.99.0'
       - run: cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets --locked
+      - name: Build scanner-core native library artifacts
+        run: cargo build --manifest-path crates/scanner-core/Cargo.toml --lib --locked
       - name: Validate Tauri lockfile resolution
         run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
