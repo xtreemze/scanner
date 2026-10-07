@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+pub use appearance::{
+    ControlledIlluminationPair, EnvironmentCoverage, EnvironmentSample, EnvironmentSampleError,
+    MaterialEstimateError, PairingError, PairingThresholds, PbrMaterialEstimate,
+};
+
+pub mod appearance;
 pub mod clock;
 pub mod export;
 pub mod guidance;
@@ -11,7 +17,10 @@ pub mod spatial;
 pub mod structural;
 
 pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchronizer, SessionClockSynchronizer};
-pub use export::{export_preview_mesh_glb, export_reconstruction_glb, GlbExportError};
+pub use export::{
+    export_preview_mesh_glb, export_preview_mesh_glb_with_material, export_reconstruction_glb,
+    export_reconstruction_glb_with_material, GlbExportError,
+};
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
     MeasurementAction,

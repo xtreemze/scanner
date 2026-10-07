@@ -1,4 +1,7 @@
-use crate::reconstruction::{PreviewMesh, ReconstructionVolume};
+use crate::{
+    appearance::{MaterialEstimateError, PbrMaterialEstimate},
+    reconstruction::{PreviewMesh, ReconstructionVolume},
+};
 
 const GLB_MAGIC: u32 = 0x4654_6C67;
 const GLB_VERSION: u32 = 2;
@@ -16,6 +19,7 @@ pub enum GlbExportError {
     NonTriangleIndexCount,
     InvalidVertex { index: usize },
     InvalidIndex { index: usize, vertex_count: usize },
+    InvalidMaterial(MaterialEstimateError),
     TooLarge,
 }
 
@@ -27,7 +31,33 @@ pub fn export_reconstruction_glb(
     export_preview_mesh_glb(&mesh)
 }
 
+pub fn export_reconstruction_glb_with_material(
+    reconstruction: &ReconstructionVolume,
+    min_confidence: f32,
+    material: &PbrMaterialEstimate,
+) -> Result<Vec<u8>, GlbExportError> {
+    let mesh = reconstruction.extract_preview_mesh(min_confidence);
+    export_preview_mesh_glb_with_material(&mesh, material)
+}
+
 pub fn export_preview_mesh_glb(mesh: &PreviewMesh) -> Result<Vec<u8>, GlbExportError> {
+    export_preview_mesh_glb_internal(mesh, None)
+}
+
+pub fn export_preview_mesh_glb_with_material(
+    mesh: &PreviewMesh,
+    material: &PbrMaterialEstimate,
+) -> Result<Vec<u8>, GlbExportError> {
+    material
+        .validate()
+        .map_err(GlbExportError::InvalidMaterial)?;
+    export_preview_mesh_glb_internal(mesh, Some(material))
+}
+
+fn export_preview_mesh_glb_internal(
+    mesh: &PreviewMesh,
+    material: Option<&PbrMaterialEstimate>,
+) -> Result<Vec<u8>, GlbExportError> {
     validate_mesh(mesh)?;
 
     let vertex_count = mesh.vertices_session_meters.len();
@@ -66,8 +96,25 @@ pub fn export_preview_mesh_glb(mesh: &PreviewMesh) -> Result<Vec<u8>, GlbExportE
     let binary_padded_length = align_four(binary_unpadded_length);
     binary.resize(binary_padded_length, 0);
 
+    let material_reference = if material.is_some() {
+        ",\"material\":0"
+    } else {
+        ""
+    };
+    let material_json = material.map_or(String::new(), |material| {
+        format!(
+            ",\"materials\":[{{\"pbrMetallicRoughness\":{{\"baseColorFactor\":[{},{},{},{}],\"metallicFactor\":{},\"roughnessFactor\":{}}}}}]",
+            json_number(material.base_color_linear_rgba[0]),
+            json_number(material.base_color_linear_rgba[1]),
+            json_number(material.base_color_linear_rgba[2]),
+            json_number(material.base_color_linear_rgba[3]),
+            json_number(material.metallic),
+            json_number(material.roughness),
+        )
+    });
+
     let json = format!(
-        "{{\"asset\":{{\"version\":\"2.0\",\"generator\":\"xtreemze/scanner\"}},\"scene\":0,\"scenes\":[{{\"nodes\":[0]}}],\"nodes\":[{{\"mesh\":0}}],\"meshes\":[{{\"primitives\":[{{\"attributes\":{{\"POSITION\":0}},\"indices\":1,\"mode\":{TRIANGLES_MODE}}}]}}],\"buffers\":[{{\"byteLength\":{binary_unpadded_length}}}],\"bufferViews\":[{{\"buffer\":0,\"byteOffset\":0,\"byteLength\":{positions_byte_length},\"target\":{ARRAY_BUFFER_TARGET}}},{{\"buffer\":0,\"byteOffset\":{indices_byte_offset},\"byteLength\":{indices_byte_length},\"target\":{ELEMENT_ARRAY_BUFFER_TARGET}}}],\"accessors\":[{{\"bufferView\":0,\"componentType\":{FLOAT_COMPONENT_TYPE},\"count\":{vertex_count},\"type\":\"VEC3\",\"min\":[{},{},{}],\"max\":[{},{},{}]}},{{\"bufferView\":1,\"componentType\":{UNSIGNED_INT_COMPONENT_TYPE},\"count\":{index_count},\"type\":\"SCALAR\"}}]}}",
+        "{{\"asset\":{{\"version\":\"2.0\",\"generator\":\"xtreemze/scanner\"}},\"scene\":0,\"scenes\":[{{\"nodes\":[0]}}],\"nodes\":[{{\"mesh\":0}}],\"meshes\":[{{\"primitives\":[{{\"attributes\":{{\"POSITION\":0}},\"indices\":1,\"mode\":{TRIANGLES_MODE}{material_reference}}}]}}]{material_json},\"buffers\":[{{\"byteLength\":{binary_unpadded_length}}}],\"bufferViews\":[{{\"buffer\":0,\"byteOffset\":0,\"byteLength\":{positions_byte_length},\"target\":{ARRAY_BUFFER_TARGET}}},{{\"buffer\":0,\"byteOffset\":{indices_byte_offset},\"byteLength\":{indices_byte_length},\"target\":{ELEMENT_ARRAY_BUFFER_TARGET}}}],\"accessors\":[{{\"bufferView\":0,\"componentType\":{FLOAT_COMPONENT_TYPE},\"count\":{vertex_count},\"type\":\"VEC3\",\"min\":[{},{},{}],\"max\":[{},{},{}]}},{{\"bufferView\":1,\"componentType\":{UNSIGNED_INT_COMPONENT_TYPE},\"count\":{index_count},\"type\":\"SCALAR\"}}]}}",
         json_number(min[0]),
         json_number(min[1]),
         json_number(min[2]),
@@ -154,7 +201,10 @@ fn json_number(value: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::observation::Vec3;
+    use crate::{
+        appearance::PbrMaterialEstimate,
+        observation::Vec3,
+    };
 
     fn triangle() -> PreviewMesh {
         PreviewMesh {
@@ -232,6 +282,44 @@ mod tests {
         assert_eq!(&glb[index_start..index_start + 4], &0u32.to_le_bytes());
         assert_eq!(&glb[index_start + 4..index_start + 8], &1u32.to_le_bytes());
         assert_eq!(&glb[index_start + 8..index_start + 12], &2u32.to_le_bytes());
+    }
+
+    #[test]
+    fn validated_pbr_material_is_projected_into_glb() {
+        let material = PbrMaterialEstimate {
+            base_color_linear_rgba: [0.2, 0.3, 0.4, 1.0],
+            metallic: 0.25,
+            roughness: 0.75,
+            confidence: 0.8,
+            evidence_ids: vec!["pair-a".into()],
+        };
+        let glb = export_preview_mesh_glb_with_material(&triangle(), &material).unwrap();
+        let json_length = read_u32(&glb, 12) as usize;
+        let json = std::str::from_utf8(&glb[20..20 + json_length])
+            .unwrap()
+            .trim_end();
+
+        assert!(json.contains("\"material\":0"));
+        assert!(json.contains("\"baseColorFactor\":[0.2,0.3,0.4,1]"));
+        assert!(json.contains("\"metallicFactor\":0.25"));
+        assert!(json.contains("\"roughnessFactor\":0.75"));
+    }
+
+    #[test]
+    fn invalid_pbr_material_is_rejected_before_export() {
+        let material = PbrMaterialEstimate {
+            base_color_linear_rgba: [0.2, 0.3, 0.4, 1.0],
+            metallic: 0.0,
+            roughness: 2.0,
+            confidence: 0.8,
+            evidence_ids: vec!["pair-a".into()],
+        };
+        assert_eq!(
+            export_preview_mesh_glb_with_material(&triangle(), &material),
+            Err(GlbExportError::InvalidMaterial(
+                MaterialEstimateError::InvalidRoughness
+            ))
+        );
     }
 
     #[test]
