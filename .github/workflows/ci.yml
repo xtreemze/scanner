@@ -21,6 +21,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  sensor-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - run: cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
+
   rust:
     runs-on: ubuntu-latest
     steps:

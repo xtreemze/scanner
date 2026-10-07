@@ -1,0 +1,17 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Default permissions for Scanner's native sensor control plane.
+
+Raw camera, depth and IMU payloads are not exposed to the WebView by this permission set.
+"""
+
+permissions = [
+  "allow-capabilities",
+  "allow-check-permissions",
+  "allow-request-permissions",
+  "allow-start-session",
+  "allow-stop-session",
+  "allow-set-torch",
+]
