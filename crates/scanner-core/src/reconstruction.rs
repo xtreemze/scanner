@@ -121,6 +121,52 @@ pub struct IntegrationReport {
     pub evicted_voxels: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoxelCheckpoint {
+    pub key: VoxelKey,
+    pub weighted_position_sum: Vec3,
+    pub total_weight: f64,
+    pub confidence_sum: f64,
+    pub observation_count: u32,
+    pub last_update_sequence: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SparseSurfaceCheckpoint {
+    pub config: FusionConfig,
+    pub voxels: Vec<VoxelCheckpoint>,
+    pub update_sequence: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoxelEvidenceCheckpoint {
+    pub key: VoxelKey,
+    pub evidence: VoxelEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconstructionCheckpoint {
+    pub frame: ReconstructionFrame,
+    pub surface: SparseSurfaceCheckpoint,
+    pub evidence: Vec<VoxelEvidenceCheckpoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReconstructionRestoreError {
+    InvalidConfig(FusionConfigError),
+    TooManyVoxels,
+    DuplicateVoxel,
+    InvalidVoxelState,
+    InvalidFrame,
+    DuplicateEvidence,
+    EvidenceForMissingVoxel,
+    InvalidEvidence,
+}
+
 #[derive(Debug, Clone)]
 struct VoxelState {
     weighted_position_sum: Vec3,
@@ -159,6 +205,72 @@ impl SparseSurfaceVolume {
     pub fn config(&self) -> &FusionConfig {
         &self.config
     }
+    pub fn checkpoint(&self) -> SparseSurfaceCheckpoint {
+        SparseSurfaceCheckpoint {
+            config: self.config.clone(),
+            voxels: self
+                .voxels
+                .iter()
+                .map(|(key, voxel)| VoxelCheckpoint {
+                    key: *key,
+                    weighted_position_sum: voxel.weighted_position_sum,
+                    total_weight: voxel.total_weight,
+                    confidence_sum: voxel.confidence_sum,
+                    observation_count: voxel.observation_count,
+                    last_update_sequence: voxel.last_update_sequence,
+                })
+                .collect(),
+            update_sequence: self.update_sequence,
+        }
+    }
+
+    pub fn from_checkpoint(
+        checkpoint: SparseSurfaceCheckpoint,
+    ) -> Result<Self, ReconstructionRestoreError> {
+        let mut volume =
+            SparseSurfaceVolume::new(checkpoint.config.clone())
+                .map_err(ReconstructionRestoreError::InvalidConfig)?;
+
+        if checkpoint.voxels.len() > checkpoint.config.max_voxels {
+            return Err(ReconstructionRestoreError::TooManyVoxels);
+        }
+
+        for saved in checkpoint.voxels {
+            let valid = vec_is_finite(saved.weighted_position_sum)
+                && saved.total_weight.is_finite()
+                && saved.total_weight > 0.0
+                && saved.confidence_sum.is_finite()
+                && saved.confidence_sum >= 0.0
+                && saved.observation_count > 0
+                && saved.confidence_sum
+                    <= f64::from(saved.observation_count) + f64::EPSILON
+                && saved.last_update_sequence <= checkpoint.update_sequence;
+            if !valid {
+                return Err(ReconstructionRestoreError::InvalidVoxelState);
+            }
+
+            if volume
+                .voxels
+                .insert(
+                    saved.key,
+                    VoxelState {
+                        weighted_position_sum: saved.weighted_position_sum,
+                        total_weight: saved.total_weight,
+                        confidence_sum: saved.confidence_sum,
+                        observation_count: saved.observation_count,
+                        last_update_sequence: saved.last_update_sequence,
+                    },
+                )
+                .is_some()
+            {
+                return Err(ReconstructionRestoreError::DuplicateVoxel);
+            }
+        }
+
+        volume.update_sequence = checkpoint.update_sequence;
+        Ok(volume)
+    }
+
 
     pub fn voxel_count(&self) -> usize {
         self.voxels.len()
@@ -425,6 +537,64 @@ impl ReconstructionVolume {
     pub fn frame(&self) -> &ReconstructionFrame {
         &self.frame
     }
+    pub fn checkpoint(&self) -> ReconstructionCheckpoint {
+        ReconstructionCheckpoint {
+            frame: self.frame.clone(),
+            surface: self.surface.checkpoint(),
+            evidence: self
+                .evidence
+                .iter()
+                .map(|(key, evidence)| VoxelEvidenceCheckpoint {
+                    key: *key,
+                    evidence: evidence.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_checkpoint(
+        checkpoint: ReconstructionCheckpoint,
+    ) -> Result<Self, ReconstructionRestoreError> {
+        if let ReconstructionFrame::ObjectLocal {
+            object_pose_session, ..
+        } = &checkpoint.frame
+        {
+            if !pose_is_finite(*object_pose_session) {
+                return Err(ReconstructionRestoreError::InvalidFrame);
+            }
+        }
+
+        let surface = SparseSurfaceVolume::from_checkpoint(checkpoint.surface)?;
+        let mut evidence = BTreeMap::new();
+
+        for saved in checkpoint.evidence {
+            if !surface.voxels.contains_key(&saved.key) {
+                return Err(ReconstructionRestoreError::EvidenceForMissingVoxel);
+            }
+            if saved.evidence.observation_ids.len() > MAX_PROVENANCE_IDS_PER_VOXEL
+                || saved.evidence.device_ids.len() > MAX_PROVENANCE_IDS_PER_VOXEL
+                || matches!(
+                    (
+                        saved.evidence.first_session_timestamp_micros,
+                        saved.evidence.last_session_timestamp_micros,
+                    ),
+                    (Some(first), Some(last)) if first > last
+                )
+            {
+                return Err(ReconstructionRestoreError::InvalidEvidence);
+            }
+            if evidence.insert(saved.key, saved.evidence).is_some() {
+                return Err(ReconstructionRestoreError::DuplicateEvidence);
+            }
+        }
+
+        Ok(Self {
+            frame: checkpoint.frame,
+            surface,
+            evidence,
+        })
+    }
+
 
     pub fn voxel_count(&self) -> usize {
         self.surface.voxel_count()
@@ -1040,6 +1210,107 @@ mod tests {
                 0.5,
             )
             .is_none());
+    }
+
+    #[test]
+    fn sparse_checkpoint_resume_matches_uninterrupted_fusion() {
+        let config = FusionConfig {
+            voxel_size_meters: 0.1,
+            max_voxels: 10,
+            max_sample_weight: 10_000.0,
+        };
+        let first = sample(0.011, 1.0, 0.01);
+        let second = sample(0.019, 1.0, 0.01);
+
+        let mut uninterrupted = SparseSurfaceVolume::new(config.clone()).unwrap();
+        uninterrupted.integrate_frame(identity_pose(), &[first]);
+        uninterrupted.integrate_frame(identity_pose(), &[second]);
+
+        let mut interrupted = SparseSurfaceVolume::new(config).unwrap();
+        interrupted.integrate_frame(identity_pose(), &[first]);
+        let checkpoint = interrupted.checkpoint();
+        let mut resumed = SparseSurfaceVolume::from_checkpoint(checkpoint).unwrap();
+        resumed.integrate_frame(identity_pose(), &[second]);
+
+        assert_eq!(resumed.extract_points(0.0), uninterrupted.extract_points(0.0));
+    }
+
+    #[test]
+    fn reconstruction_checkpoint_preserves_frame_and_provenance() {
+        let mut volume = ReconstructionVolume::new(
+            FusionConfig {
+                voxel_size_meters: 0.1,
+                max_voxels: 10,
+                max_sample_weight: 10_000.0,
+            },
+            ReconstructionFrame::ObjectLocal {
+                object_id: "object-a".into(),
+                object_pose_session: Pose {
+                    position_meters: Vec3 {
+                        x: 2.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    ..identity_pose()
+                },
+            },
+        )
+        .unwrap();
+
+        volume.integrate_observed_frame(
+            Pose {
+                position_meters: Vec3 {
+                    x: 2.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                ..identity_pose()
+            },
+            &[sample(0.01, 0.9, 0.01)],
+            &ObservationProvenance {
+                observation_id: "frame-a".into(),
+                device_id: "phone-a".into(),
+                session_timestamp_micros: Some(123),
+            },
+        );
+
+        let checkpoint = volume.checkpoint();
+        let restored = ReconstructionVolume::from_checkpoint(checkpoint).unwrap();
+
+        assert_eq!(restored.frame(), volume.frame());
+        assert_eq!(restored.extract_points(0.0), volume.extract_points(0.0));
+        assert_eq!(
+            restored
+                .voxel_evidence(VoxelKey { x: 0, y: 0, z: 10 })
+                .unwrap()
+                .observation_ids,
+            vec!["frame-a"]
+        );
+    }
+
+    #[test]
+    fn reconstruction_restore_rejects_evidence_for_missing_voxel() {
+        let checkpoint = ReconstructionCheckpoint {
+            frame: ReconstructionFrame::SessionWorld,
+            surface: SparseSurfaceCheckpoint {
+                config: FusionConfig {
+                    voxel_size_meters: 0.1,
+                    max_voxels: 10,
+                    max_sample_weight: 10_000.0,
+                },
+                voxels: Vec::new(),
+                update_sequence: 0,
+            },
+            evidence: vec![VoxelEvidenceCheckpoint {
+                key: VoxelKey { x: 0, y: 0, z: 0 },
+                evidence: VoxelEvidence::default(),
+            }],
+        };
+
+        assert_eq!(
+            ReconstructionVolume::from_checkpoint(checkpoint),
+            Err(ReconstructionRestoreError::EvidenceForMissingVoxel)
+        );
     }
 
     #[test]
