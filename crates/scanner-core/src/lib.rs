@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod guidance;
 pub mod observation;
 pub mod reconstruction;
+pub mod repair;
 pub mod session;
 pub mod spatial;
 pub mod structural;
@@ -19,8 +20,11 @@ pub use observation::{
     CAPTURE_SCHEMA_VERSION,
 };
 pub use reconstruction::{
-    FusionConfig, FusionConfigError, IntegrationReport, PreviewMesh, SampleRejection,
+    FusionConfig, FusionConfigError, IntegrationReport, PreviewMesh, RaycastHit, SampleRejection,
     SparseSurfaceVolume, SurfacePoint, SurfaceSample, VoxelKey,
+};
+pub use repair::{
+    select_repair_region, RepairNeeds, RepairRegion, RepairSelectionError,
 };
 pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
