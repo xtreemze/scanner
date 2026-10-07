@@ -9,6 +9,7 @@ pub mod session;
 pub mod spatial;
 pub mod structural;
 
+pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchronizer, SessionClockSynchronizer};
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
     MeasurementAction,
@@ -29,7 +30,7 @@ pub use repair::{
 };
 pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
-    ConstraintEvaluation, ConstraintRejection, ConstraintSource, SessionWorld, SolveReport,
+    ConstraintEvaluation, ConstraintRejection, ConstraintSource, OptimizationReport, SessionWorld, SolveReport,
     SpatialConstraint, SpatialConstraintKind, Uncertainty,
 };
 pub use structural::{
