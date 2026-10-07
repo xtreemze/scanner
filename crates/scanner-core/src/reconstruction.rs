@@ -1307,10 +1307,10 @@ mod tests {
             }],
         };
 
-        assert_eq!(
+        assert!(matches!(
             ReconstructionVolume::from_checkpoint(checkpoint),
             Err(ReconstructionRestoreError::EvidenceForMissingVoxel)
-        );
+        ));
     }
 
     #[test]
