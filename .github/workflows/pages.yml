@@ -24,7 +24,7 @@ jobs:
           node-version: '24.21.0'
       - run: corepack enable
       - run: corepack prepare pnpm@12.9.1 --activate
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
