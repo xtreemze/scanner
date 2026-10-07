@@ -12,7 +12,7 @@ mod desktop;
 mod mobile;
 
 pub use error::{Error, Result};
-pub use models::{SensorCapabilities, StartSessionOptions, TorchOptions};
+pub use models::{PermissionState, SensorCapabilities, SensorPermissionState, StartSessionOptions, TorchOptions};
 
 #[cfg(desktop)]
 pub use desktop::ScannerSensors;
