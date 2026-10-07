@@ -820,6 +820,13 @@ fn add_vec(a: Vec3, b: Vec3) -> Vec3 {
     }
 }
 
+fn distance(a: Vec3, b: Vec3) -> f64 {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    let dz = a.z - b.z;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
 fn scale_vec(v: Vec3, scale: f64) -> Vec3 {
     Vec3 {
         x: v.x * scale,
