@@ -31,6 +31,9 @@ fn map_sensor_capabilities(capabilities: SensorCapabilities) -> Vec<SpatialCapab
 
 #[tauri::command]
 fn platform_capabilities<R: Runtime>(app: AppHandle<R>) -> PlatformCapabilities {
+    #[cfg(desktop)]
+    let _ = &app;
+
     #[cfg(mobile)]
     let capabilities = app
         .scanner_sensors()
