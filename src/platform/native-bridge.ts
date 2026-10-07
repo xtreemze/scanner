@@ -6,13 +6,26 @@ export interface PlatformCapabilities {
   readonly capabilities: readonly SpatialCapability[];
 }
 
+function browserCapabilities(): SpatialCapability[] {
+  const capabilities: SpatialCapability[] = [];
+
+  if (typeof navigator.mediaDevices?.getUserMedia === 'function') {
+    capabilities.push('camera');
+  }
+
+  if ('DeviceMotionEvent' in window || 'Accelerometer' in window) {
+    capabilities.push('imu');
+  }
+
+  return capabilities;
+}
+
 export async function platformCapabilities(): Promise<PlatformCapabilities> {
   if (!('__TAURI_INTERNALS__' in window)) {
-    const capabilities: SpatialCapability[] = ['camera', 'imu'];
     return {
       runtime: 'web',
       mobile: matchMedia('(pointer: coarse)').matches,
-      capabilities
+      capabilities: browserCapabilities()
     };
   }
 
