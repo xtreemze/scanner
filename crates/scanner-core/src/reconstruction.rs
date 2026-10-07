@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +26,13 @@ pub struct SurfacePoint {
     pub position_session_meters: Vec3,
     pub confidence: f32,
     pub observation_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewMesh {
+    pub vertices_session_meters: Vec<Vec3>,
+    pub triangle_indices: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,9 +198,7 @@ impl SparseSurfaceVolume {
                     return None;
                 }
 
-                let confidence =
-                    (voxel.confidence_sum / f64::from(voxel.observation_count)).clamp(0.0, 1.0)
-                        as f32;
+                let confidence = voxel_confidence(voxel);
                 if confidence < threshold {
                     return None;
                 }
@@ -210,6 +215,78 @@ impl SparseSurfaceVolume {
             .collect()
     }
 
+    pub fn extract_preview_mesh(&self, min_confidence: f32) -> PreviewMesh {
+        let threshold = min_confidence.clamp(0.0, 1.0);
+        let active = self
+            .voxels
+            .iter()
+            .filter_map(|(key, voxel)| {
+                (voxel_confidence(voxel) >= threshold).then_some(*key)
+            })
+            .collect::<BTreeSet<_>>();
+
+        let mut mesh = PreviewMesh::default();
+        let faces: [(VoxelKey, [[f64; 3]; 4]); 6] = [
+            (
+                VoxelKey { x: -1, y: 0, z: 0 },
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
+            ),
+            (
+                VoxelKey { x: 1, y: 0, z: 0 },
+                [[1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+            ),
+            (
+                VoxelKey { x: 0, y: -1, z: 0 },
+                [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0]],
+            ),
+            (
+                VoxelKey { x: 0, y: 1, z: 0 },
+                [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]],
+            ),
+            (
+                VoxelKey { x: 0, y: 0, z: -1 },
+                [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            ),
+            (
+                VoxelKey { x: 0, y: 0, z: 1 },
+                [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]],
+            ),
+        ];
+
+        for key in &active {
+            for (delta, corners) in faces {
+                let Some(neighbor) = offset_key(*key, delta) else {
+                    continue;
+                };
+                if active.contains(&neighbor) {
+                    continue;
+                }
+                if mesh.vertices_session_meters.len() > (u32::MAX as usize).saturating_sub(4) {
+                    return mesh;
+                }
+
+                let base = mesh.vertices_session_meters.len() as u32;
+                for corner in corners {
+                    mesh.vertices_session_meters.push(Vec3 {
+                        x: (f64::from(key.x) + corner[0]) * self.config.voxel_size_meters,
+                        y: (f64::from(key.y) + corner[1]) * self.config.voxel_size_meters,
+                        z: (f64::from(key.z) + corner[2]) * self.config.voxel_size_meters,
+                    });
+                }
+                mesh.triangle_indices.extend_from_slice(&[
+                    base,
+                    base + 1,
+                    base + 2,
+                    base,
+                    base + 2,
+                    base + 3,
+                ]);
+            }
+        }
+
+        mesh
+    }
+
     fn lowest_value_voxel_key(&self) -> Option<VoxelKey> {
         self.voxels
             .iter()
@@ -221,6 +298,21 @@ impl SparseSurfaceVolume {
             })
             .map(|(key, _)| *key)
     }
+}
+
+fn voxel_confidence(voxel: &VoxelState) -> f32 {
+    if voxel.observation_count == 0 {
+        return 0.0;
+    }
+    (voxel.confidence_sum / f64::from(voxel.observation_count)).clamp(0.0, 1.0) as f32
+}
+
+fn offset_key(key: VoxelKey, delta: VoxelKey) -> Option<VoxelKey> {
+    Some(VoxelKey {
+        x: key.x.checked_add(delta.x)?,
+        y: key.y.checked_add(delta.y)?,
+        z: key.z.checked_add(delta.z)?,
+    })
 }
 
 fn sample_weight(sample: SurfaceSample, max_weight: f64) -> Option<f64> {
@@ -446,6 +538,40 @@ mod tests {
         assert_eq!(report.accepted_samples, 0);
         assert_eq!(report.rejected_samples, 1);
         assert_eq!(volume.voxel_count(), 0);
+    }
+
+    #[test]
+    fn preview_mesh_culls_faces_between_adjacent_voxels() {
+        let mut volume = SparseSurfaceVolume::new(FusionConfig {
+            voxel_size_meters: 0.1,
+            max_voxels: 10,
+            max_sample_weight: 10_000.0,
+        })
+        .unwrap();
+
+        volume.integrate_frame(
+            identity_pose(),
+            &[sample(0.01, 1.0, 0.01), sample(0.11, 1.0, 0.01)],
+        );
+
+        let mesh = volume.extract_preview_mesh(0.0);
+        assert_eq!(mesh.vertices_session_meters.len(), 40);
+        assert_eq!(mesh.triangle_indices.len(), 60);
+    }
+
+    #[test]
+    fn preview_mesh_respects_confidence_threshold() {
+        let mut volume = SparseSurfaceVolume::new(FusionConfig {
+            voxel_size_meters: 0.1,
+            max_voxels: 10,
+            max_sample_weight: 10_000.0,
+        })
+        .unwrap();
+
+        volume.integrate_frame(identity_pose(), &[sample(0.01, 0.3, 0.01)]);
+
+        assert!(volume.extract_preview_mesh(0.5).triangle_indices.is_empty());
+        assert_eq!(volume.extract_preview_mesh(0.2).triangle_indices.len(), 36);
     }
 
     #[test]

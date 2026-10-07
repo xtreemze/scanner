@@ -19,8 +19,8 @@ pub use observation::{
     CAPTURE_SCHEMA_VERSION,
 };
 pub use reconstruction::{
-    FusionConfig, FusionConfigError, IntegrationReport, SampleRejection, SparseSurfaceVolume,
-    SurfacePoint, SurfaceSample, VoxelKey,
+    FusionConfig, FusionConfigError, IntegrationReport, PreviewMesh, SampleRejection,
+    SparseSurfaceVolume, SurfacePoint, SurfaceSample, VoxelKey,
 };
 pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
