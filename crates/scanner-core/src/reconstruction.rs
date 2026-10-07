@@ -45,6 +45,42 @@ pub struct RaycastHit {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ReconstructionFrame {
+    SessionWorld,
+    ObjectLocal {
+        object_id: String,
+        object_pose_session: Pose,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationProvenance {
+    pub observation_id: String,
+    pub device_id: String,
+    pub session_timestamp_micros: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VoxelEvidence {
+    pub observation_ids: Vec<String>,
+    pub device_ids: Vec<String>,
+    pub first_session_timestamp_micros: Option<u64>,
+    pub last_session_timestamp_micros: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReconstructionFrameError {
+    NotObjectLocal,
+    ObjectIdMismatch,
+    InvalidPose,
+}
+
+const MAX_PROVENANCE_IDS_PER_VOXEL: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FusionConfig {
     pub voxel_size_meters: f64,
@@ -356,6 +392,279 @@ impl SparseSurfaceVolume {
             })
             .map(|(key, _)| *key)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReconstructionVolume {
+    frame: ReconstructionFrame,
+    surface: SparseSurfaceVolume,
+    evidence: BTreeMap<VoxelKey, VoxelEvidence>,
+}
+
+impl ReconstructionVolume {
+    pub fn new(
+        config: FusionConfig,
+        frame: ReconstructionFrame,
+    ) -> Result<Self, FusionConfigError> {
+        if let ReconstructionFrame::ObjectLocal {
+            object_pose_session, ..
+        } = &frame
+        {
+            if !pose_is_finite(*object_pose_session) {
+                return Err(FusionConfigError::InvalidVoxelSize);
+            }
+        }
+
+        Ok(Self {
+            frame,
+            surface: SparseSurfaceVolume::new(config)?,
+            evidence: BTreeMap::new(),
+        })
+    }
+
+    pub fn frame(&self) -> &ReconstructionFrame {
+        &self.frame
+    }
+
+    pub fn voxel_count(&self) -> usize {
+        self.surface.voxel_count()
+    }
+
+    pub fn set_object_pose_session(
+        &mut self,
+        object_id: &str,
+        object_pose_session: Pose,
+    ) -> Result<(), ReconstructionFrameError> {
+        if !pose_is_finite(object_pose_session) {
+            return Err(ReconstructionFrameError::InvalidPose);
+        }
+
+        match &mut self.frame {
+            ReconstructionFrame::SessionWorld => Err(ReconstructionFrameError::NotObjectLocal),
+            ReconstructionFrame::ObjectLocal {
+                object_id: existing_id,
+                object_pose_session: existing_pose,
+            } => {
+                if existing_id != object_id {
+                    return Err(ReconstructionFrameError::ObjectIdMismatch);
+                }
+                *existing_pose = object_pose_session;
+                Ok(())
+            }
+        }
+    }
+
+    pub fn integrate_observed_frame(
+        &mut self,
+        camera_pose_session: Pose,
+        samples: &[SurfaceSample],
+        provenance: &ObservationProvenance,
+    ) -> IntegrationReport {
+        let camera_pose_frame = match self.camera_pose_in_frame(camera_pose_session) {
+            Some(pose) => pose,
+            None => {
+                return IntegrationReport {
+                    rejected_samples: samples.len(),
+                    ..IntegrationReport::default()
+                };
+            }
+        };
+
+        let report = self.surface.integrate_frame(camera_pose_frame, samples);
+
+        for sample in samples {
+            if sample_weight(*sample, self.surface.config.max_sample_weight).is_none() {
+                continue;
+            }
+            let point_frame = transform_point(camera_pose_frame, sample.position_camera_meters);
+            let Some(key) = voxel_key(point_frame, self.surface.config.voxel_size_meters) else {
+                continue;
+            };
+            if !self.surface.voxels.contains_key(&key) {
+                continue;
+            }
+
+            let evidence = self.evidence.entry(key).or_default();
+            insert_bounded_unique(
+                &mut evidence.observation_ids,
+                &provenance.observation_id,
+                MAX_PROVENANCE_IDS_PER_VOXEL,
+            );
+            insert_bounded_unique(
+                &mut evidence.device_ids,
+                &provenance.device_id,
+                MAX_PROVENANCE_IDS_PER_VOXEL,
+            );
+            if let Some(timestamp) = provenance.session_timestamp_micros {
+                evidence.first_session_timestamp_micros = Some(
+                    evidence
+                        .first_session_timestamp_micros
+                        .map_or(timestamp, |current| current.min(timestamp)),
+                );
+                evidence.last_session_timestamp_micros = Some(
+                    evidence
+                        .last_session_timestamp_micros
+                        .map_or(timestamp, |current| current.max(timestamp)),
+                );
+            }
+        }
+
+        self.evidence
+            .retain(|key, _| self.surface.voxels.contains_key(key));
+
+        report
+    }
+
+    pub fn voxel_evidence(&self, key: VoxelKey) -> Option<&VoxelEvidence> {
+        self.evidence.get(&key)
+    }
+
+    pub fn extract_points(&self, min_confidence: f32) -> Vec<SurfacePoint> {
+        self.surface
+            .extract_points(min_confidence)
+            .into_iter()
+            .map(|mut point| {
+                point.position_session_meters =
+                    self.frame_point_to_session(point.position_session_meters);
+                point
+            })
+            .collect()
+    }
+
+    pub fn extract_preview_mesh(&self, min_confidence: f32) -> PreviewMesh {
+        let mut mesh = self.surface.extract_preview_mesh(min_confidence);
+        for vertex in &mut mesh.vertices_session_meters {
+            *vertex = self.frame_point_to_session(*vertex);
+        }
+        mesh
+    }
+
+    pub fn raycast_surface(
+        &self,
+        origin_session_meters: Vec3,
+        direction_session: Vec3,
+        min_confidence: f32,
+    ) -> Option<RaycastHit> {
+        let origin_frame = self.session_point_to_frame(origin_session_meters)?;
+        let direction_frame = self.session_direction_to_frame(direction_session)?;
+        let mut hit =
+            self.surface
+                .raycast_surface(origin_frame, direction_frame, min_confidence)?;
+        hit.position_session_meters =
+            self.frame_point_to_session(hit.position_session_meters);
+        hit.distance_meters =
+            distance(origin_session_meters, hit.position_session_meters);
+        Some(hit)
+    }
+
+    fn camera_pose_in_frame(&self, camera_pose_session: Pose) -> Option<Pose> {
+        if !pose_is_finite(camera_pose_session) {
+            return None;
+        }
+        match &self.frame {
+            ReconstructionFrame::SessionWorld => Some(camera_pose_session),
+            ReconstructionFrame::ObjectLocal {
+                object_pose_session, ..
+            } => Some(compose_pose(
+                inverse_pose(*object_pose_session)?,
+                camera_pose_session,
+            )),
+        }
+    }
+
+    fn session_point_to_frame(&self, point_session: Vec3) -> Option<Vec3> {
+        match &self.frame {
+            ReconstructionFrame::SessionWorld => Some(point_session),
+            ReconstructionFrame::ObjectLocal {
+                object_pose_session, ..
+            } => Some(transform_point(inverse_pose(*object_pose_session)?, point_session)),
+        }
+    }
+
+    fn frame_point_to_session(&self, point_frame: Vec3) -> Vec3 {
+        match &self.frame {
+            ReconstructionFrame::SessionWorld => point_frame,
+            ReconstructionFrame::ObjectLocal {
+                object_pose_session, ..
+            } => transform_point(*object_pose_session, point_frame),
+        }
+    }
+
+    fn session_direction_to_frame(&self, direction_session: Vec3) -> Option<Vec3> {
+        match &self.frame {
+            ReconstructionFrame::SessionWorld => normalize_vec(direction_session),
+            ReconstructionFrame::ObjectLocal {
+                object_pose_session, ..
+            } => {
+                let inverse = inverse_pose(*object_pose_session)?;
+                normalize_vec(rotate_vec(inverse.orientation, direction_session))
+            }
+        }
+    }
+}
+
+fn insert_bounded_unique(values: &mut Vec<String>, value: &str, limit: usize) {
+    if values.iter().any(|existing| existing == value) {
+        return;
+    }
+    if values.len() >= limit {
+        values.remove(0);
+    }
+    values.push(value.to_owned());
+}
+
+fn compose_pose(a: Pose, b: Pose) -> Pose {
+    Pose {
+        position_meters: add_vec(
+            a.position_meters,
+            rotate_vec(a.orientation, b.position_meters),
+        ),
+        orientation: normalize_quaternion_value(multiply_quaternion(a.orientation, b.orientation)),
+    }
+}
+
+fn inverse_pose(pose: Pose) -> Option<Pose> {
+    let q = normalized_quaternion(pose.orientation)?;
+    let inverse_orientation = Quaternion {
+        x: -q.x,
+        y: -q.y,
+        z: -q.z,
+        w: q.w,
+    };
+    Some(Pose {
+        position_meters: rotate_vec(
+            inverse_orientation,
+            scale_vec(pose.position_meters, -1.0),
+        ),
+        orientation: inverse_orientation,
+    })
+}
+
+fn multiply_quaternion(a: Quaternion, b: Quaternion) -> Quaternion {
+    Quaternion {
+        w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+        x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    }
+}
+
+fn normalize_quaternion_value(q: Quaternion) -> Quaternion {
+    normalized_quaternion(q).unwrap_or(Quaternion {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 1.0,
+    })
+}
+
+fn pose_is_finite(pose: Pose) -> bool {
+    vec_is_finite(pose.position_meters)
+        && pose.orientation.x.is_finite()
+        && pose.orientation.y.is_finite()
+        && pose.orientation.z.is_finite()
+        && pose.orientation.w.is_finite()
+        && normalized_quaternion(pose.orientation).is_some()
 }
 
 fn ray_aabb_distance(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f64> {
@@ -724,6 +1033,159 @@ mod tests {
                 0.5,
             )
             .is_none());
+    }
+
+    #[test]
+    fn object_local_geometry_can_move_without_reintegrating_surface() {
+        let mut volume = ReconstructionVolume::new(
+            FusionConfig {
+                voxel_size_meters: 0.1,
+                max_voxels: 10,
+                max_sample_weight: 10_000.0,
+            },
+            ReconstructionFrame::ObjectLocal {
+                object_id: "object-a".into(),
+                object_pose_session: Pose {
+                    position_meters: Vec3 {
+                        x: 2.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    ..identity_pose()
+                },
+            },
+        )
+        .unwrap();
+
+        let provenance = ObservationProvenance {
+            observation_id: "frame-1".into(),
+            device_id: "scanner".into(),
+            session_timestamp_micros: Some(100),
+        };
+        let camera_pose = Pose {
+            position_meters: Vec3 {
+                x: 2.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            ..identity_pose()
+        };
+        volume.integrate_observed_frame(camera_pose, &[sample(0.0, 1.0, 0.01)], &provenance);
+
+        let before = volume.extract_points(0.0)[0].position_session_meters;
+        assert!((before.x - 2.0).abs() < 1e-9);
+
+        volume
+            .set_object_pose_session(
+                "object-a",
+                Pose {
+                    position_meters: Vec3 {
+                        x: 5.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    ..identity_pose()
+                },
+            )
+            .unwrap();
+
+        let after = volume.extract_points(0.0)[0].position_session_meters;
+        assert!((after.x - 5.0).abs() < 1e-9);
+        assert_eq!(volume.voxel_count(), 1);
+    }
+
+    #[test]
+    fn voxel_provenance_tracks_distinct_observations_and_devices() {
+        let mut volume = ReconstructionVolume::new(
+            FusionConfig {
+                voxel_size_meters: 0.1,
+                max_voxels: 10,
+                max_sample_weight: 10_000.0,
+            },
+            ReconstructionFrame::SessionWorld,
+        )
+        .unwrap();
+
+        for (observation_id, device_id, timestamp) in [
+            ("frame-a", "phone-a", 100),
+            ("frame-b", "phone-b", 200),
+        ] {
+            volume.integrate_observed_frame(
+                identity_pose(),
+                &[sample(0.01, 0.9, 0.01)],
+                &ObservationProvenance {
+                    observation_id: observation_id.into(),
+                    device_id: device_id.into(),
+                    session_timestamp_micros: Some(timestamp),
+                },
+            );
+        }
+
+        let key = VoxelKey { x: 0, y: 0, z: 10 };
+        let evidence = volume.voxel_evidence(key).unwrap();
+        assert_eq!(evidence.observation_ids, vec!["frame-a", "frame-b"]);
+        assert_eq!(evidence.device_ids, vec!["phone-a", "phone-b"]);
+        assert_eq!(evidence.first_session_timestamp_micros, Some(100));
+        assert_eq!(evidence.last_session_timestamp_micros, Some(200));
+    }
+
+    #[test]
+    fn object_local_raycast_returns_session_registered_hit() {
+        let mut volume = ReconstructionVolume::new(
+            FusionConfig {
+                voxel_size_meters: 0.1,
+                max_voxels: 10,
+                max_sample_weight: 10_000.0,
+            },
+            ReconstructionFrame::ObjectLocal {
+                object_id: "object-a".into(),
+                object_pose_session: Pose {
+                    position_meters: Vec3 {
+                        x: 3.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    ..identity_pose()
+                },
+            },
+        )
+        .unwrap();
+
+        volume.integrate_observed_frame(
+            Pose {
+                position_meters: Vec3 {
+                    x: 3.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                ..identity_pose()
+            },
+            &[sample(0.01, 1.0, 0.01)],
+            &ObservationProvenance {
+                observation_id: "frame".into(),
+                device_id: "scanner".into(),
+                session_timestamp_micros: None,
+            },
+        );
+
+        let hit = volume
+            .raycast_surface(
+                Vec3 {
+                    x: 3.01,
+                    y: 0.01,
+                    z: 0.0,
+                },
+                Vec3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 1.0,
+                },
+                0.5,
+            )
+            .unwrap();
+
+        assert!((hit.position_session_meters.x - 3.01).abs() < 1e-9);
+        assert!((hit.distance_meters - 1.0).abs() < 1e-9);
     }
 
     #[test]
