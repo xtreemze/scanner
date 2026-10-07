@@ -22,8 +22,9 @@ pub use observation::{
     CAPTURE_SCHEMA_VERSION,
 };
 pub use reconstruction::{
-    FusionConfig, FusionConfigError, IntegrationReport, PreviewMesh, RaycastHit, SampleRejection,
-    SparseSurfaceVolume, SurfacePoint, SurfaceSample, VoxelKey,
+    FusionConfig, FusionConfigError, IntegrationReport, ObservationProvenance, PreviewMesh,
+    RaycastHit, ReconstructionFrame, ReconstructionFrameError, ReconstructionVolume,
+    SampleRejection, SparseSurfaceVolume, SurfacePoint, SurfaceSample, VoxelEvidence, VoxelKey,
 };
 pub use repair::{
     select_repair_region, RepairNeeds, RepairRegion, RepairSelectionError,
