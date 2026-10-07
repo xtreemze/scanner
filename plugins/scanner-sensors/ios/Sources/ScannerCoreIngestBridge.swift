@@ -70,7 +70,7 @@ final class ScannerCoreIngestBridge {
     // zero for "not supplied by this platform adapter"; a later calibrated camera path can add it.
     var metadata = ScannerNativeCameraFrameMetadata(
       timestamp_micros: frame.timestampMicros,
-      clock_domain: UInt32(SCANNER_CLOCK_CAMERA_SENSOR),
+      clock_domain: 2,
       uncertainty_micros: 0,
       pose_device_local: pose,
       intrinsics: intrinsics,
@@ -117,7 +117,7 @@ final class ScannerCoreIngestBridge {
     )
     var sample = ScannerNativeImuSample(
       timestamp_micros: motion.timestampMicros,
-      clock_domain: UInt32(SCANNER_CLOCK_DEVICE_MONOTONIC),
+      clock_domain: 1,
       uncertainty_micros: 0,
       acceleration_mps2: acceleration,
       angular_velocity_rps: angularVelocity,
@@ -168,7 +168,7 @@ final class ScannerCoreIngestBridge {
       uncertainty_micros: 0,
       width_px: UInt32(clamping: width),
       height_px: UInt32(clamping: height),
-      depth_format: UInt32(SCANNER_NATIVE_DEPTH_F32_METERS.rawValue),
+      depth_format: 2,
       depth_row_stride_bytes: depthRowStride,
       confidence_row_stride_bytes: confidenceRowStride,
       // Zero/zero asks scanner-core to derive the valid range while it copies the depth evidence.
