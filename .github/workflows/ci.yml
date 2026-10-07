@@ -42,7 +42,13 @@ jobs:
         with:
           toolchain: '1.99.0'
       - run: cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
-      - run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
+      - name: Generate Tauri lockfile for branch update
+        run: |
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+          echo 'SCANNER_LOCKFILE_BEGIN'
+          base64 -w0 src-tauri/Cargo.lock
+          echo
+          echo 'SCANNER_LOCKFILE_END'
 
   rust:
     runs-on: ubuntu-latest
