@@ -5,7 +5,9 @@ fn platform_capabilities() -> PlatformCapabilities {
     PlatformCapabilities {
         runtime: "tauri".into(),
         mobile: cfg!(mobile),
-        capabilities: vec![SpatialCapability::Camera, SpatialCapability::Imu],
+        // Native mobile sensor adapters are not implemented yet. Do not advertise
+        // platform capabilities until an adapter can actually provide them.
+        capabilities: Vec::<SpatialCapability>::new(),
     }
 }
 
