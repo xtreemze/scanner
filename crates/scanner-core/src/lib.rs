@@ -4,8 +4,16 @@ pub use appearance::{
     ControlledIlluminationPair, EnvironmentCoverage, EnvironmentSample, EnvironmentSampleError,
     MaterialEstimateError, PairingError, PairingThresholds, PbrMaterialEstimate,
 };
+pub use appearance_pipeline::{
+    choose_texture_view, derive_material_evidence, infer_pbr_material, plan_illumination_sequence,
+    EnvironmentRadianceBin, HdrEnvironmentAccumulator, HdrEnvironmentSample, HdrSampleError,
+    IlluminationEmitter, IlluminationPlanError, IlluminationStep, IlluminationStepKind,
+    MaterialEvidenceError, MaterialInference, MaterialInferenceError, MaterialPhotometricEvidence,
+    PhotometricRegionStats, TextureViewCandidate, TextureViewError,
+};
 
 pub mod appearance;
+pub mod appearance_pipeline;
 pub mod clock;
 pub mod export;
 pub mod guidance;
