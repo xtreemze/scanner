@@ -2,16 +2,25 @@ use serde::{Deserialize, Serialize};
 
 pub mod guidance;
 pub mod observation;
+pub mod reconstruction;
 pub mod session;
 pub mod spatial;
 pub mod structural;
 
-pub use guidance::{choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate, MeasurementAction};
+pub use guidance::{
+    choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
+    MeasurementAction,
+};
 pub use observation::{
     CameraFrameObservation, CameraIntrinsics, ClockDomain, DepthObservation, ExposureMetadata,
     IlluminationMode, IlluminationObservation, ImuObservation, ObservationEnvelope,
-    ObservationLedger, ObservationRejection, ObservationSource, Pose, Quaternion, RangingObservation,
-    RawObservation, Timestamp, UserCorrespondenceObservation, Vec3, CAPTURE_SCHEMA_VERSION,
+    ObservationLedger, ObservationRejection, ObservationSource, Pose, Quaternion,
+    RangingObservation, RawObservation, Timestamp, UserCorrespondenceObservation, Vec3,
+    CAPTURE_SCHEMA_VERSION,
+};
+pub use reconstruction::{
+    FusionConfig, FusionConfigError, IntegrationReport, SampleRejection, SparseSurfaceVolume,
+    SurfacePoint, SurfaceSample, VoxelKey,
 };
 pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
