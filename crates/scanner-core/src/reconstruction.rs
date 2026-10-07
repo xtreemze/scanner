@@ -35,6 +35,15 @@ pub struct PreviewMesh {
     pub triangle_indices: Vec<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RaycastHit {
+    pub voxel: VoxelKey,
+    pub position_session_meters: Vec3,
+    pub distance_meters: f64,
+    pub confidence: f32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FusionConfig {
@@ -287,6 +296,55 @@ impl SparseSurfaceVolume {
         mesh
     }
 
+    pub fn raycast_surface(
+        &self,
+        origin_session_meters: Vec3,
+        direction_session: Vec3,
+        min_confidence: f32,
+    ) -> Option<RaycastHit> {
+        if !vec_is_finite(origin_session_meters) {
+            return None;
+        }
+        let direction = normalize_vec(direction_session)?;
+        let threshold = min_confidence.clamp(0.0, 1.0);
+        let size = self.config.voxel_size_meters;
+
+        self.voxels
+            .iter()
+            .filter_map(|(key, voxel)| {
+                let confidence = voxel_confidence(voxel);
+                if confidence < threshold {
+                    return None;
+                }
+
+                let min = Vec3 {
+                    x: f64::from(key.x) * size,
+                    y: f64::from(key.y) * size,
+                    z: f64::from(key.z) * size,
+                };
+                let max = Vec3 {
+                    x: min.x + size,
+                    y: min.y + size,
+                    z: min.z + size,
+                };
+                let distance = ray_aabb_distance(origin_session_meters, direction, min, max)?;
+                Some(RaycastHit {
+                    voxel: *key,
+                    position_session_meters: add_vec(
+                        origin_session_meters,
+                        scale_vec(direction, distance),
+                    ),
+                    distance_meters: distance,
+                    confidence,
+                })
+            })
+            .min_by(|a, b| {
+                a.distance_meters
+                    .total_cmp(&b.distance_meters)
+                    .then_with(|| a.voxel.cmp(&b.voxel))
+            })
+    }
+
     fn lowest_value_voxel_key(&self) -> Option<VoxelKey> {
         self.voxels
             .iter()
@@ -298,6 +356,50 @@ impl SparseSurfaceVolume {
             })
             .map(|(key, _)| *key)
     }
+}
+
+fn ray_aabb_distance(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f64> {
+    let mut t_min = 0.0;
+    let mut t_max = f64::INFINITY;
+
+    for (origin_component, direction_component, min_component, max_component) in [
+        (origin.x, direction.x, min.x, max.x),
+        (origin.y, direction.y, min.y, max.y),
+        (origin.z, direction.z, min.z, max.z),
+    ] {
+        if direction_component.abs() <= 1e-12 {
+            if origin_component < min_component || origin_component > max_component {
+                return None;
+            }
+            continue;
+        }
+
+        let inverse = 1.0 / direction_component;
+        let mut near = (min_component - origin_component) * inverse;
+        let mut far = (max_component - origin_component) * inverse;
+        if near > far {
+            std::mem::swap(&mut near, &mut far);
+        }
+
+        t_min = t_min.max(near);
+        t_max = t_max.min(far);
+        if t_max < t_min {
+            return None;
+        }
+    }
+
+    (t_max >= 0.0).then_some(t_min.max(0.0))
+}
+
+fn normalize_vec(v: Vec3) -> Option<Vec3> {
+    if !vec_is_finite(v) {
+        return None;
+    }
+    let magnitude = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+    if !magnitude.is_finite() || magnitude <= 1e-12 {
+        return None;
+    }
+    Some(scale_vec(v, 1.0 / magnitude))
 }
 
 fn voxel_confidence(voxel: &VoxelState) -> f32 {
@@ -572,6 +674,56 @@ mod tests {
 
         assert!(volume.extract_preview_mesh(0.5).triangle_indices.is_empty());
         assert_eq!(volume.extract_preview_mesh(0.2).triangle_indices.len(), 36);
+    }
+
+    #[test]
+    fn raycast_returns_nearest_confident_surface_voxel() {
+        let mut volume = SparseSurfaceVolume::new(FusionConfig {
+            voxel_size_meters: 0.1,
+            max_voxels: 10,
+            max_sample_weight: 10_000.0,
+        })
+        .unwrap();
+
+        volume.integrate_frame(
+            identity_pose(),
+            &[sample(0.01, 1.0, 0.01), SurfaceSample {
+                position_camera_meters: Vec3 { x: 0.01, y: 0.0, z: 2.0 },
+                confidence: 1.0,
+                depth_uncertainty_meters: 0.01,
+            }],
+        );
+
+        let hit = volume
+            .raycast_surface(
+                Vec3 { x: 0.01, y: 0.01, z: 0.0 },
+                Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+                0.5,
+            )
+            .unwrap();
+
+        assert!((hit.distance_meters - 1.0).abs() < 1e-9);
+        assert_eq!(hit.voxel.z, 10);
+    }
+
+    #[test]
+    fn raycast_ignores_surface_below_confidence_threshold() {
+        let mut volume = SparseSurfaceVolume::new(FusionConfig {
+            voxel_size_meters: 0.1,
+            max_voxels: 10,
+            max_sample_weight: 10_000.0,
+        })
+        .unwrap();
+
+        volume.integrate_frame(identity_pose(), &[sample(0.01, 0.2, 0.01)]);
+
+        assert!(volume
+            .raycast_surface(
+                Vec3 { x: 0.01, y: 0.01, z: 0.0 },
+                Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+                0.5,
+            )
+            .is_none());
     }
 
     #[test]
