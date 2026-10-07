@@ -6,7 +6,7 @@ use tauri::{
 
 use crate::{
     Result,
-    models::{SensorCapabilities, StartSessionOptions, TorchOptions},
+    models::{SensorCapabilities, SensorPermissionState, StartSessionOptions, TorchOptions},
 };
 
 #[cfg(target_os = "android")]
@@ -35,6 +35,18 @@ impl<R: Runtime> ScannerSensors<R> {
     pub fn capabilities(&self) -> Result<SensorCapabilities> {
         self.0
             .run_mobile_plugin("capabilities", ())
+            .map_err(Into::into)
+    }
+
+    pub fn check_permissions(&self) -> Result<SensorPermissionState> {
+        self.0
+            .run_mobile_plugin("checkPermissions", ())
+            .map_err(Into::into)
+    }
+
+    pub fn request_permissions(&self) -> Result<SensorPermissionState> {
+        self.0
+            .run_mobile_plugin("requestPermissions", ())
             .map_err(Into::into)
     }
 
