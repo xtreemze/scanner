@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -41,6 +43,7 @@ pub enum SessionCheckpointError {
         session: u64,
         observation: u64,
     },
+    DuplicateObservationId { observation_id: String },
     SessionWorldRestore(SessionWorldRestoreError),
     ReconstructionRestore {
         index: usize,
@@ -91,12 +94,18 @@ impl CaptureSessionCheckpoint {
             });
         }
 
+        let mut observation_ids = BTreeSet::new();
         for observation in &self.raw_observations {
             if observation.epoch() != self.session.epoch {
                 return Err(SessionCheckpointError::ObservationEpochMismatch {
                     observation_id: observation.id().to_owned(),
                     session: self.session.epoch,
                     observation: observation.epoch(),
+                });
+            }
+            if !observation_ids.insert(observation.id().to_owned()) {
+                return Err(SessionCheckpointError::DuplicateObservationId {
+                    observation_id: observation.id().to_owned(),
                 });
             }
         }
@@ -213,6 +222,24 @@ mod tests {
                 observation_id: "stale".into(),
                 session: 5,
                 observation: 4,
+            })
+        );
+    }
+
+    #[test]
+    fn checkpoint_rejects_duplicate_observation_identity() {
+        let session = ScanSession::new("scan-a", 5);
+        let world = SessionWorld::new(5);
+
+        assert_eq!(
+            CaptureSessionCheckpoint::capture(
+                session,
+                vec![imu("same", 5), imu("same", 5)],
+                &world,
+                &[],
+            ),
+            Err(SessionCheckpointError::DuplicateObservationId {
+                observation_id: "same".into(),
             })
         );
     }
