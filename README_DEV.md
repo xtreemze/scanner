@@ -29,7 +29,15 @@ Install the current Tauri platform prerequisites, then:
 
     pnpm tauri:dev
 
-Lockfiles are committed for pnpm, scanner-core, and the Tauri host. CI requires frozen/locked resolution. Mobile targets are intentionally scaffolded but sensor adapters are not implemented yet. Their implementation must preserve the contracts in docs/architecture/.
+Lockfiles are committed for pnpm, scanner-core, and the Tauri host. CI requires frozen/locked resolution.
+
+## Native sensor adapters
+
+Platform acquisition source baselines live under `native/ios/` and `native/android/`. They are not yet wired into generated Tauri mobile projects and are not device-certified.
+
+The integration architecture is documented in `docs/decisions/0012-native-adapter-control-and-data-plane.md`: Tauri mobile plugins own low-rate control commands while camera/depth/IMU payloads should reach Rust through FFI/JNI rather than passing through the WebView.
+
+Do not add a capability to `platform_capabilities` until the corresponding Tauri adapter path is compiled and operational for that session.
 
 ## Verification claims
 
