@@ -19,7 +19,7 @@ fn map_sensor_capabilities(capabilities: SensorCapabilities) -> Vec<SpatialCapab
     if capabilities.lidar {
         mapped.push(SpatialCapability::Lidar);
     }
-    if capabilities.flash_hardware {
+    if capabilities.flash_session_control {
         mapped.push(SpatialCapability::Flash);
     }
     if capabilities.hdr {
