@@ -19,11 +19,18 @@ let package = Package(
   ],
   targets: [
     .target(
+      name: "ScannerCoreFFI",
+      path: "Sources/ScannerCoreFFI",
+      publicHeadersPath: "include"
+    ),
+    .target(
       name: "tauri-plugin-scanner-sensors",
       dependencies: [
-        .byName(name: "Tauri")
+        .byName(name: "Tauri"),
+        .byName(name: "ScannerCoreFFI")
       ],
-      path: "Sources"
+      path: "Sources",
+      exclude: ["ScannerCoreFFI"]
     )
   ]
 )
