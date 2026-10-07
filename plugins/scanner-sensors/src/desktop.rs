@@ -5,21 +5,18 @@ use crate::{
     models::{SensorCapabilities, SensorPermissionState, StartSessionOptions, TorchOptions},
 };
 
-pub struct ScannerSensors<R: Runtime> {
-    _marker: std::marker::PhantomData<R>,
-}
+pub struct ScannerSensors<R: Runtime>(AppHandle<R>);
 
 pub fn init<R: Runtime, C: serde::de::DeserializeOwned>(
-    _app: &AppHandle<R>,
+    app: &AppHandle<R>,
     _api: PluginApi<R, C>,
 ) -> Result<ScannerSensors<R>> {
-    Ok(ScannerSensors {
-        _marker: std::marker::PhantomData,
-    })
+    Ok(ScannerSensors(app.clone()))
 }
 
 impl<R: Runtime> ScannerSensors<R> {
     pub fn capabilities(&self) -> Result<SensorCapabilities> {
+        let _ = &self.0;
         Err(Error::UnsupportedPlatform)
     }
 
