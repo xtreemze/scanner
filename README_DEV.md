@@ -33,7 +33,13 @@ Lockfiles are committed for pnpm, scanner-core, and the Tauri host. CI requires 
 
 ## Native sensor adapters
 
-Platform acquisition source baselines live under `native/ios/` and `native/android/`. They are not yet wired into generated Tauri mobile projects and are not device-certified.
+The active Tauri mobile plugin source lives under `plugins/scanner-sensors/`. The earlier `native/ios/` and `native/android/` files are retained only until the plugin integration is validated and will then be removed to avoid parallel adapter ownership.
+
+The plugin Rust shell can be checked on the host with:
+
+    cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
+
+The iOS/Android native modules are still not device-certified.
 
 The integration architecture is documented in `docs/decisions/0012-native-adapter-control-and-data-plane.md`: Tauri mobile plugins own low-rate control commands while camera/depth/IMU payloads should reach Rust through FFI/JNI rather than passing through the WebView.
 
