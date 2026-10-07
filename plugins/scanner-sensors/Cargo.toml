@@ -1,0 +1,27 @@
+[package]
+name = "tauri-plugin-scanner-sensors"
+version = "0.1.0"
+description = "Native mobile sensor control plane for Scanner"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT OR Apache-2.0"
+links = "tauri-plugin-scanner-sensors"
+
+[package.metadata.platforms.support]
+windows = { level = "none", notes = "Scanner mobile sensor plugin is unavailable on desktop." }
+linux = { level = "none", notes = "Scanner mobile sensor plugin is unavailable on desktop." }
+macos = { level = "none", notes = "Scanner mobile sensor plugin is unavailable on desktop." }
+android = { level = "partial", notes = "ARCore/camera/IMU control plane; device certification pending." }
+ios = { level = "partial", notes = "ARKit/camera/Core Motion control plane; device certification pending." }
+
+[build-dependencies]
+tauri-plugin = { version = "2.7.0", features = ["build"] }
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+tauri = { version = "2.12.0", default-features = false }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+tauri = { version = "2.12.0", default-features = false, features = ["wry"] }
