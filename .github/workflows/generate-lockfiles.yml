@@ -1,0 +1,43 @@
+name: Generate lockfiles
+
+on:
+  push:
+    branches: [chore/reproducible-lockfiles]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/reproducible-lockfiles
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.21.0'
+      - run: corepack enable
+      - run: corepack prepare pnpm@12.9.1 --activate
+      - name: Generate pnpm lockfile
+        run: pnpm install --lockfile-only
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - name: Generate scanner-core lockfile
+        run: cargo generate-lockfile --manifest-path crates/scanner-core/Cargo.toml
+      - name: Generate Tauri lockfile
+        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Commit generated lockfiles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml crates/scanner-core/Cargo.lock src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Lockfiles already current"
+            exit 0
+          fi
+          git commit -m "chore: generate reproducible lockfiles"
+          git push origin HEAD:chore/reproducible-lockfiles
