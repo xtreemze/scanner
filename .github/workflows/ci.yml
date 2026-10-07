@@ -42,6 +42,7 @@ jobs:
         with:
           toolchain: '1.99.0'
       - run: cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
 
   rust:
     runs-on: ubuntu-latest

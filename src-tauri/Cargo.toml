@@ -15,5 +15,6 @@ tauri-build = { version = "2.7.0", features = [] }
 
 [dependencies]
 scanner-core = { path = "../crates/scanner-core" }
+tauri-plugin-scanner-sensors = { path = "../plugins/scanner-sensors" }
 serde = { version = "1.0.228", features = ["derive"] }
 tauri = { version = "2.12.0", features = [] }
