@@ -1,5 +1,7 @@
 const COMMANDS: &[&str] = &[
     "capabilities",
+    "check_permissions",
+    "request_permissions",
     "start_session",
     "stop_session",
     "set_torch",
