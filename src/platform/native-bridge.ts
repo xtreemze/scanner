@@ -25,8 +25,10 @@ export interface SensorPermissionState {
 }
 
 export interface StartSensorSessionOptions {
-  readonly resetTracking: boolean;
-  readonly preferRawDepth: boolean;
+  readonly deviceId: string;
+  readonly epoch: number;
+  readonly resetTracking?: boolean;
+  readonly preferRawDepth?: boolean;
 }
 
 function browserCapabilities(): SpatialCapability[] {
@@ -80,13 +82,22 @@ export function requestSensorPermissions(): Promise<SensorPermissionState> {
   return invokeNative<SensorPermissionState>('request_sensor_permissions');
 }
 
-export function startSensorSession(
-  options: StartSensorSessionOptions = {
-    resetTracking: false,
-    preferRawDepth: true
+export function startSensorSession(options: StartSensorSessionOptions): Promise<void> {
+  if (!options.deviceId.trim()) {
+    return Promise.reject(new Error('deviceId is required to start a native sensor session'));
   }
-): Promise<void> {
-  return invokeNative<void>('start_sensor_session', { options });
+  if (!Number.isSafeInteger(options.epoch) || options.epoch < 0) {
+    return Promise.reject(new Error('epoch must be a non-negative safe integer'));
+  }
+
+  return invokeNative<void>('start_sensor_session', {
+    options: {
+      deviceId: options.deviceId,
+      epoch: options.epoch,
+      resetTracking: options.resetTracking ?? false,
+      preferRawDepth: options.preferRawDepth ?? true
+    }
+  });
 }
 
 export function stopSensorSession(): Promise<void> {
