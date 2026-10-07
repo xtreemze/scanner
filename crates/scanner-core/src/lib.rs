@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod clock;
 pub mod guidance;
 pub mod observation;
 pub mod reconstruction;
