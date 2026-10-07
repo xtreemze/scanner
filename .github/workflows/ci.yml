@@ -18,7 +18,7 @@ jobs:
           node-version: '24.21.0'
       - run: corepack enable
       - run: corepack prepare pnpm@12.9.1 --activate
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
   rust:
@@ -28,4 +28,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
-      - run: cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets
+      - run: cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets --locked
+      - name: Validate Tauri lockfile resolution
+        run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
