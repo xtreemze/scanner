@@ -330,12 +330,15 @@ impl NativeIngestSession {
             return NativeStatus::InvalidClockDomain;
         };
 
+        let unspecified_range =
+            descriptor.min_depth_meters == 0.0 && descriptor.max_depth_meters == 0.0;
         if descriptor.width_px == 0
             || descriptor.height_px == 0
             || !descriptor.min_depth_meters.is_finite()
             || !descriptor.max_depth_meters.is_finite()
             || descriptor.min_depth_meters < 0.0
-            || descriptor.max_depth_meters < descriptor.min_depth_meters
+            || (!unspecified_range
+                && descriptor.max_depth_meters < descriptor.min_depth_meters)
         {
             return NativeStatus::InvalidMetadata;
         }
@@ -387,6 +390,21 @@ impl NativeIngestSession {
             None => None,
         };
 
+        let (min_depth_meters, max_depth_meters) = if unspecified_range {
+            let Some(range) = derive_depth_range(
+                format,
+                depth_bytes,
+                descriptor.width_px,
+                descriptor.height_px,
+                descriptor.depth_row_stride_bytes,
+            ) else {
+                return NativeStatus::InvalidBuffer;
+            };
+            range
+        } else {
+            (descriptor.min_depth_meters, descriptor.max_depth_meters)
+        };
+
         let id = self.next_id("depth");
         let depth_asset_id = format!("native-depth:{id}");
         let confidence_asset_id = confidence
@@ -404,8 +422,8 @@ impl NativeIngestSession {
                 height_px: descriptor.height_px,
                 depth_asset_id,
                 confidence_asset_id,
-                min_depth_meters: descriptor.min_depth_meters,
-                max_depth_meters: descriptor.max_depth_meters,
+                min_depth_meters,
+                max_depth_meters,
             },
         });
 
@@ -537,6 +555,55 @@ fn intrinsics(value: NativeCameraIntrinsics) -> Option<CameraIntrinsics> {
         cx: value.cx,
         cy: value.cy,
     })
+}
+
+fn derive_depth_range(
+    format: NativeDepthFormat,
+    bytes: &[u8],
+    width_px: u32,
+    height_px: u32,
+    row_stride_bytes: usize,
+) -> Option<(f32, f32)> {
+    let mut min_depth = f32::INFINITY;
+    let mut max_depth = 0.0f32;
+
+    for row in 0..height_px as usize {
+        let row_start = row.checked_mul(row_stride_bytes)?;
+        match format {
+            NativeDepthFormat::U16Millimeters => {
+                for column in 0..width_px as usize {
+                    let offset = row_start.checked_add(column.checked_mul(2)?)?;
+                    let pair = bytes.get(offset..offset + 2)?;
+                    let millimeters = u16::from_ne_bytes([pair[0], pair[1]]);
+                    if millimeters == 0 {
+                        continue;
+                    }
+                    let meters = f32::from(millimeters) / 1000.0;
+                    min_depth = min_depth.min(meters);
+                    max_depth = max_depth.max(meters);
+                }
+            }
+            NativeDepthFormat::F32Meters => {
+                for column in 0..width_px as usize {
+                    let offset = row_start.checked_add(column.checked_mul(4)?)?;
+                    let value = bytes.get(offset..offset + 4)?;
+                    let meters =
+                        f32::from_ne_bytes([value[0], value[1], value[2], value[3]]);
+                    if !meters.is_finite() || meters <= 0.0 {
+                        continue;
+                    }
+                    min_depth = min_depth.min(meters);
+                    max_depth = max_depth.max(meters);
+                }
+            }
+        }
+    }
+
+    if min_depth.is_finite() && max_depth >= min_depth {
+        Some((min_depth, max_depth))
+    } else {
+        None
+    }
 }
 
 unsafe fn borrowed_bytes<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
@@ -784,6 +851,45 @@ mod tests {
         assert_eq!(first.depth_bytes, vec![2; 8]);
         assert_eq!(first.confidence_bytes, Some(vec![253; 4]));
         assert!(first.fresh_for_frame);
+    }
+
+    #[test]
+    fn derives_depth_range_when_platform_does_not_supply_one() {
+        let mut session = NativeIngestSession::new("phone-a", 1).unwrap();
+        let descriptor = NativeDepthDescriptor {
+            timestamp_micros: 1,
+            clock_domain: 2,
+            uncertainty_micros: 0,
+            width_px: 2,
+            height_px: 2,
+            depth_format: NativeDepthFormat::F32Meters as u32,
+            depth_row_stride_bytes: 8,
+            confidence_row_stride_bytes: 2,
+            min_depth_meters: 0.0,
+            max_depth_meters: 0.0,
+            fresh_for_frame: 1,
+        };
+        let values = [0.0f32, 0.5, 2.0, f32::NAN];
+        let mut bytes = Vec::new();
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+
+        assert_eq!(
+            session.ingest_depth(descriptor, &bytes, None),
+            NativeStatus::Ok
+        );
+
+        let observation = session
+            .observations
+            .iter()
+            .find_map(|observation| match observation {
+                RawObservation::Depth(depth) => Some(depth),
+                _ => None,
+            })
+            .unwrap();
+        assert!((observation.payload.min_depth_meters - 0.5).abs() < f32::EPSILON);
+        assert!((observation.payload.max_depth_meters - 2.0).abs() < f32::EPSILON);
     }
 
     #[test]
