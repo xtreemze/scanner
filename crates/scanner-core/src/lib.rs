@@ -17,6 +17,7 @@ pub mod appearance_pipeline;
 pub mod clock;
 pub mod export;
 pub mod guidance;
+pub mod native_ingest;
 pub mod observation;
 pub mod reconstruction;
 pub mod repair;
@@ -32,6 +33,11 @@ pub use export::{
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
     MeasurementAction,
+};
+pub use native_ingest::{
+    NativeCameraFrameMetadata, NativeCameraIntrinsics, NativeDepthDescriptor, NativeDepthFormat,
+    NativeDepthFrame, NativeImuSample, NativeIngestSession, NativeIngestStats, NativePose,
+    NativeQuaternion, NativeStatus, NativeVec3,
 };
 pub use observation::{
     CameraFrameObservation, CameraIntrinsics, ClockDomain, DepthObservation, ExposureMetadata,

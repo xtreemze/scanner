@@ -53,3 +53,21 @@ It has not yet been compiled or device-certified in the Tauri Android project.
 ## Verification boundary
 
 These files are platform source baselines, not evidence that the native adapters work on hardware. Issues #2 and #3 remain open until the Tauri mobile projects are wired, compiled, and physically tested according to `docs/verification/certification-matrix.md`.
+
+
+## Rust ingestion ABI
+
+The canonical high-rate native boundary is now declared in `native/scanner_core.h` and implemented by `scanner-core::native_ingest`.
+
+The intended path is:
+
+    ARKit / ARCore / platform sensors
+      -> Swift / Kotlin adapter
+      -> C ABI / JNI shim
+      -> scanner-core NativeIngestSession
+      -> canonical RawObservation + bounded Rust-owned buffers
+      -> clock / SessionWorld / reconstruction
+
+Tauri commands remain the low-rate control plane. Do not serialize camera, depth, confidence, or high-rate IMU buffers through the WebView.
+
+The native wrappers are not yet connected to generated Tauri mobile projects, so this ABI is unit-tested but not device-certified.
