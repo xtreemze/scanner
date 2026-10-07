@@ -2,7 +2,7 @@ use tauri::{AppHandle, Runtime, plugin::PluginApi};
 
 use crate::{
     Error, Result,
-    models::{SensorCapabilities, StartSessionOptions, TorchOptions},
+    models::{SensorCapabilities, SensorPermissionState, StartSessionOptions, TorchOptions},
 };
 
 pub struct ScannerSensors<R: Runtime> {
@@ -20,6 +20,14 @@ pub fn init<R: Runtime, C: serde::de::DeserializeOwned>(
 
 impl<R: Runtime> ScannerSensors<R> {
     pub fn capabilities(&self) -> Result<SensorCapabilities> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub fn check_permissions(&self) -> Result<SensorPermissionState> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub fn request_permissions(&self) -> Result<SensorPermissionState> {
         Err(Error::UnsupportedPlatform)
     }
 
