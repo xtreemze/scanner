@@ -99,6 +99,28 @@ pub struct OptimizationReport {
     pub max_applied_step_meters: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevicePoseCheckpoint {
+    pub device_id: String,
+    pub pose_session: Pose,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorldCheckpoint {
+    pub epoch: u64,
+    pub constraints: Vec<SpatialConstraint>,
+    pub device_poses: Vec<DevicePoseCheckpoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionWorldRestoreError {
+    InvalidConstraint(ConstraintRejection),
+    DuplicateDevicePose,
+    InvalidDevicePose,
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionWorld {
     epoch: u64,
@@ -424,6 +446,47 @@ impl SessionWorld {
                 }
             })
             .sum()
+    }
+
+    pub fn checkpoint(&self) -> SessionWorldCheckpoint {
+        SessionWorldCheckpoint {
+            epoch: self.epoch,
+            constraints: self.constraints.clone(),
+            device_poses: self
+                .device_poses
+                .iter()
+                .map(|(device_id, pose_session)| DevicePoseCheckpoint {
+                    device_id: device_id.clone(),
+                    pose_session: *pose_session,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_checkpoint(
+        checkpoint: SessionWorldCheckpoint,
+    ) -> Result<Self, SessionWorldRestoreError> {
+        let mut world = SessionWorld::new(checkpoint.epoch);
+        for constraint in checkpoint.constraints {
+            world
+                .add_constraint(constraint)
+                .map_err(SessionWorldRestoreError::InvalidConstraint)?;
+        }
+
+        for device in checkpoint.device_poses {
+            if !pose_is_finite(device.pose_session) {
+                return Err(SessionWorldRestoreError::InvalidDevicePose);
+            }
+            if world
+                .device_poses
+                .insert(device.device_id, device.pose_session)
+                .is_some()
+            {
+                return Err(SessionWorldRestoreError::DuplicateDevicePose);
+            }
+        }
+
+        Ok(world)
     }
 
     fn evaluate_constraint(&self, constraint: &SpatialConstraint) -> ConstraintEvaluation {
@@ -1063,6 +1126,69 @@ mod tests {
         assert_eq!(
             world.device_pose("scanner-b").unwrap().position_meters.x,
             1.5
+        );
+    }
+
+    #[test]
+    fn checkpoint_round_trip_preserves_epoch_constraints_and_device_poses() {
+        let mut world = SessionWorld::new(12);
+        world
+            .add_constraint(SpatialConstraint {
+                id: "root".into(),
+                epoch: 12,
+                source: ConstraintSource::PlatformPose,
+                uncertainty: Uncertainty {
+                    standard_deviation: 0.02,
+                },
+                kind: SpatialConstraintKind::AbsolutePose {
+                    device_id: "scanner".into(),
+                    pose_session: identity_pose(1.0, 2.0, 3.0),
+                },
+            })
+            .unwrap();
+        world.solve_propagation();
+
+        let checkpoint = world.checkpoint();
+        let restored = SessionWorld::from_checkpoint(checkpoint).unwrap();
+
+        assert_eq!(restored.epoch(), 12);
+        assert_eq!(restored.constraints().len(), 1);
+        assert_eq!(
+            restored.device_pose("scanner").unwrap().position_meters,
+            Vec3 {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0
+            }
+        );
+    }
+
+    #[test]
+    fn restore_rejects_device_pose_with_non_finite_state() {
+        let checkpoint = SessionWorldCheckpoint {
+            epoch: 1,
+            constraints: Vec::new(),
+            device_poses: vec![DevicePoseCheckpoint {
+                device_id: "bad".into(),
+                pose_session: Pose {
+                    position_meters: Vec3 {
+                        x: f64::NAN,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    orientation: Quaternion {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                        w: 1.0,
+                    },
+                },
+            }],
+        };
+
+        assert_eq!(
+            SessionWorld::from_checkpoint(checkpoint),
+            Err(SessionWorldRestoreError::InvalidDevicePose)
         );
     }
 
