@@ -3,6 +3,8 @@ import SwiftRs
 import Tauri
 
 struct StartSessionArgs: Decodable {
+  let deviceId: String
+  let epoch: UInt64
   let resetTracking: Bool?
   let preferRawDepth: Bool?
 }
