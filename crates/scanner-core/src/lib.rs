@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod clock;
+pub mod export;
 pub mod guidance;
 pub mod observation;
 pub mod reconstruction;
@@ -10,6 +11,7 @@ pub mod spatial;
 pub mod structural;
 
 pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchronizer, SessionClockSynchronizer};
+pub use export::{export_preview_mesh_glb, export_reconstruction_glb, GlbExportError};
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
     MeasurementAction,
