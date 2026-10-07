@@ -359,8 +359,8 @@ impl SparseSurfaceVolume {
 }
 
 fn ray_aabb_distance(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f64> {
-    let mut t_min = 0.0;
-    let mut t_max = f64::INFINITY;
+    let mut t_min: f64 = 0.0;
+    let mut t_max: f64 = f64::INFINITY;
 
     for (origin_component, direction_component, min_component, max_component) in [
         (origin.x, direction.x, min.x, max.x),
