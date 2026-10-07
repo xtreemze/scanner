@@ -70,7 +70,7 @@ pub struct SpatialConstraint {
     pub kind: SpatialConstraintKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConstraintRejection {
     DuplicateId,
     StaleEpoch { expected: u64, actual: u64 },
@@ -1186,10 +1186,10 @@ mod tests {
             }],
         };
 
-        assert_eq!(
+        assert!(matches!(
             SessionWorld::from_checkpoint(checkpoint),
             Err(SessionWorldRestoreError::InvalidDevicePose)
-        );
+        ));
     }
 
     #[test]
