@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+pub use appearance::{
+    ControlledIlluminationPair, EnvironmentCoverage, EnvironmentSample, EnvironmentSampleError,
+    MaterialEstimateError, PairingError, PairingThresholds, PbrMaterialEstimate,
+};
+
+pub mod appearance;
 pub mod clock;
 pub mod export;
 pub mod guidance;
