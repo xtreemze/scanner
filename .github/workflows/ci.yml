@@ -21,6 +21,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  sensor-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - run: cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
+
   rust:
     runs-on: ubuntu-latest
     steps:
