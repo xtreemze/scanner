@@ -43,6 +43,9 @@ jobs:
           toolchain: '1.99.0'
       - run: cargo check --manifest-path plugins/scanner-sensors/Cargo.toml --all-targets
       - run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
+      - name: Validate Android JNI shim against scanner-core ABI
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -fsyntax-only             -I"$JAVA_HOME/include"             -I"$JAVA_HOME/include/linux"             -Inative             plugins/scanner-sensors/android/src/main/cpp/scanner_core_jni.c
 
   rust:
     runs-on: ubuntu-latest
