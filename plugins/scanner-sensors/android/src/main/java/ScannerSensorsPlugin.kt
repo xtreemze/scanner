@@ -33,6 +33,7 @@ class TorchArgs {
 class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
     private val adapter = ScannerSensorAdapter(activity)
     private var session: Session? = null
+    private var ingestBridge: ScannerCoreIngestBridge? = null
 
     @Command
     fun capabilities(invoke: Invoke) {
@@ -91,6 +92,15 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
 
         try {
             val activeSession = session ?: Session(activity).also { session = it }
+            val bridge = ScannerCoreIngestBridge.create(args.deviceId, args.epoch)
+                ?: throw IllegalStateException("scanner-core ingestion ABI is unavailable")
+
+            ingestBridge?.close()
+            ingestBridge = bridge
+            adapter.onMotionSample = { sample ->
+                bridge.ingestMotion(sample)
+            }
+
             adapter.configureSession(activeSession)
             activeSession.resume()
             adapter.startImu()
@@ -103,8 +113,41 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun stopSession(invoke: Invoke) {
         adapter.stopImu()
+        adapter.onMotionSample = null
         session?.pause()
+        ingestBridge?.close()
+        ingestBridge = null
         invoke.resolve()
+    }
+
+    /**
+     * Called by the native ARCore update/render loop after Session.update().
+     *
+     * This is deliberately not a Tauri command: high-rate camera/depth payloads must not route
+     * through the WebView. The host integration should call this method directly for each Frame.
+     */
+    fun ingestFrame(frame: com.google.ar.core.Frame): AndroidFrameIngestReport? {
+        val bridge = ingestBridge ?: return null
+        return adapter.ingestFrame(frame, bridge)
+    }
+
+    @Command
+    fun ingestStats(invoke: Invoke) {
+        val stats = ingestBridge?.stats()
+        if (stats == null) {
+            invoke.reject("No active scanner-core ingestion session")
+            return
+        }
+
+        val result = JSObject()
+        result.put("acceptedCameraFrames", stats.acceptedCameraFrames)
+        result.put("acceptedImuSamples", stats.acceptedImuSamples)
+        result.put("acceptedDepthFrames", stats.acceptedDepthFrames)
+        result.put("droppedObservations", stats.droppedObservations)
+        result.put("droppedDepthFrames", stats.droppedDepthFrames)
+        result.put("queuedObservations", stats.queuedObservations)
+        result.put("queuedDepthFrames", stats.queuedDepthFrames)
+        invoke.resolve(result)
     }
 
     @Command

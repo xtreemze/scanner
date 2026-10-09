@@ -58,6 +58,12 @@ data class AndroidMotionSample(
     val angularVelocityRps: DoubleArray?,
 )
 
+data class AndroidFrameIngestReport(
+    val cameraStatus: Int?,
+    val depthStatus: Int?,
+    val depthFresh: Boolean,
+)
+
 /// Native Android acquisition adapter.
 ///
 /// The ARCore render/update loop owns Frame creation. This adapter configures the Session and
@@ -145,6 +151,42 @@ class ScannerSensorAdapter(private val activity: Activity) : SensorEventListener
                 TrackingState.PAUSED -> "paused"
                 TrackingState.STOPPED -> "stopped"
             },
+        )
+    }
+
+    fun ingestFrame(frame: Frame, bridge: ScannerCoreIngestBridge): AndroidFrameIngestReport {
+        if (frame.camera.trackingState != TrackingState.TRACKING) {
+            return AndroidFrameIngestReport(
+                cameraStatus = null,
+                depthStatus = null,
+                depthFresh = false,
+            )
+        }
+
+        val cameraStatus = bridge.ingestCamera(frameMetadata(frame))
+        var depthStatus: Int? = null
+        var depthFresh = false
+
+        withRawDepth(frame) { depth, confidence, descriptor ->
+            depthFresh = descriptor.isFreshForFrame
+            if (!descriptor.isFreshForFrame) return@withRawDepth
+
+            val depthPlane = depth.planes.singleOrNull() ?: return@withRawDepth
+            val confidencePlane = confidence.planes.singleOrNull() ?: return@withRawDepth
+
+            depthStatus = bridge.ingestDepth(
+                descriptor = descriptor,
+                depth = depthPlane.buffer,
+                depthRowStrideBytes = depthPlane.rowStride,
+                confidence = confidencePlane.buffer,
+                confidenceRowStrideBytes = confidencePlane.rowStride,
+            )
+        }
+
+        return AndroidFrameIngestReport(
+            cameraStatus = cameraStatus,
+            depthStatus = depthStatus,
+            depthFresh = depthFresh,
         )
     }
 

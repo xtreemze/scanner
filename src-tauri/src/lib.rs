@@ -101,8 +101,27 @@ fn set_sensor_torch<R: Runtime>(
         .map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "android")]
+fn retain_scanner_core_ingest_symbols() {
+    // Android's JNI shim resolves the platform-neutral C ABI from the already-loaded
+    // Tauri Rust library. Taking and black-boxing these addresses prevents dead-code
+    // elimination from dropping the exported symbols without creating another state owner.
+    let symbols = [
+        scanner_core::scanner_native_session_create as usize,
+        scanner_core::scanner_native_session_destroy as usize,
+        scanner_core::scanner_native_ingest_camera_metadata as usize,
+        scanner_core::scanner_native_ingest_imu as usize,
+        scanner_core::scanner_native_ingest_depth as usize,
+        scanner_core::scanner_native_ingest_stats as usize,
+    ];
+    std::hint::black_box(symbols);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "android")]
+    retain_scanner_core_ingest_symbols();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_scanner_sensors::init())
         .invoke_handler(tauri::generate_handler![
