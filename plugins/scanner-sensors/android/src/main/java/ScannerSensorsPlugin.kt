@@ -14,6 +14,8 @@ import com.google.ar.core.Session
 
 @InvokeArg
 class StartSessionArgs {
+    var deviceId: String = ""
+    var epoch: Long = 0
     var resetTracking: Boolean = false
     var preferRawDepth: Boolean = true
 }
@@ -78,6 +80,12 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
     fun startSession(invoke: Invoke) {
         if (getPermissionState("camera") != PermissionState.GRANTED) {
             invoke.reject("Camera permission is required before starting ARCore")
+            return
+        }
+
+        val args = invoke.parseArgs(StartSessionArgs::class.java)
+        if (args.deviceId.isBlank() || args.epoch < 0) {
+            invoke.reject("A non-empty deviceId and non-negative epoch are required")
             return
         }
 

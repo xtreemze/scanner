@@ -28,9 +28,11 @@ pub struct SensorPermissionState {
     pub camera: PermissionState,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartSessionOptions {
+    pub device_id: String,
+    pub epoch: u64,
     pub reset_tracking: bool,
     pub prefer_raw_depth: bool,
 }

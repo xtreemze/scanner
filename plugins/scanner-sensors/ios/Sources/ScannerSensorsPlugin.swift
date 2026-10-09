@@ -3,6 +3,8 @@ import SwiftRs
 import Tauri
 
 struct StartSessionArgs: Decodable {
+  let deviceId: String
+  let epoch: UInt64
   let resetTracking: Bool?
   let preferRawDepth: Bool?
 }
@@ -63,16 +65,30 @@ final class ScannerSensorsPlugin: Plugin {
     }
 
     let args = try invoke.parseArgs(StartSessionArgs.self)
+    guard !args.deviceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      invoke.reject("A non-empty deviceId is required")
+      return
+    }
+    guard let bridge = ScannerCoreIngestBridge(deviceId: args.deviceId, epoch: args.epoch) else {
+      invoke.reject("Unable to create scanner-core ingestion session")
+      return
+    }
+
+    adapter.ingestBridge = bridge
     do {
       try adapter.start(resetTracking: args.resetTracking ?? false)
       invoke.resolve()
     } catch {
-      invoke.reject("Unable to start ARKit session: (error.localizedDescription)")
+      bridge.close()
+      adapter.ingestBridge = nil
+      invoke.reject("Unable to start ARKit session: \(error.localizedDescription)")
     }
   }
 
   @objc public func stopSession(_ invoke: Invoke) {
     adapter.stop()
+    adapter.ingestBridge?.close()
+    adapter.ingestBridge = nil
     invoke.resolve()
   }
 

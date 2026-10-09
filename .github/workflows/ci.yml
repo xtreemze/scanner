@@ -54,5 +54,9 @@ jobs:
       - run: cargo test --manifest-path crates/scanner-core/Cargo.toml --all-targets --locked
       - name: Build scanner-core native library artifacts
         run: cargo build --manifest-path crates/scanner-core/Cargo.toml --lib --locked
+      - name: Validate native C ABI header
+        run: |
+          cmp native/scanner_core.h plugins/scanner-sensors/ios/Sources/ScannerCoreFFI/include/scanner_core.h
+          printf '#include "scanner_core.h"\nint main(void) { return 0; }\n' | cc -x c -fsyntax-only -I native -
       - name: Validate Tauri lockfile resolution
         run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null

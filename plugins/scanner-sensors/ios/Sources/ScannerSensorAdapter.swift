@@ -64,6 +64,7 @@ final class ScannerSensorAdapter: NSObject, ARSessionDelegate {
 
   var onFrameMetadata: ((IOSFrameMetadata) -> Void)?
   var onMotionSample: ((IOSMotionSample) -> Void)?
+  var ingestBridge: ScannerCoreIngestBridge?
 
   override init() {
     super.init()
@@ -204,6 +205,7 @@ final class ScannerSensorAdapter: NSObject, ARSessionDelegate {
     )
 
     onFrameMetadata?(metadata)
+    ingestBridge?.ingest(frameMetadata: metadata, depthData: depthData?.0)
 
     // frame.capturedImage, depthData?.0.depthMap and confidenceMap deliberately remain
     // native pixel buffers here. The high-rate ingestion path should pass them directly
@@ -217,26 +219,26 @@ final class ScannerSensorAdapter: NSObject, ARSessionDelegate {
     motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
       guard let self, let motion else { return }
       let gravityScale = 9.80665
-      self.onMotionSample?(
-        IOSMotionSample(
-          timestampMicros: UInt64(max(motion.timestamp, 0) * 1_000_000),
-          userAccelerationMps2: [
-            motion.userAcceleration.x * gravityScale,
-            motion.userAcceleration.y * gravityScale,
-            motion.userAcceleration.z * gravityScale,
-          ],
-          rotationRateRps: [
-            motion.rotationRate.x,
-            motion.rotationRate.y,
-            motion.rotationRate.z,
-          ],
-          gravityMps2: [
-            motion.gravity.x * gravityScale,
-            motion.gravity.y * gravityScale,
-            motion.gravity.z * gravityScale,
-          ]
-        )
+      let sample = IOSMotionSample(
+        timestampMicros: UInt64(max(motion.timestamp, 0) * 1_000_000),
+        userAccelerationMps2: [
+          motion.userAcceleration.x * gravityScale,
+          motion.userAcceleration.y * gravityScale,
+          motion.userAcceleration.z * gravityScale,
+        ],
+        rotationRateRps: [
+          motion.rotationRate.x,
+          motion.rotationRate.y,
+          motion.rotationRate.z,
+        ],
+        gravityMps2: [
+          motion.gravity.x * gravityScale,
+          motion.gravity.y * gravityScale,
+          motion.gravity.z * gravityScale,
+        ]
       )
+      self.onMotionSample?(sample)
+      self.ingestBridge?.ingest(motion: sample)
     }
   }
 
