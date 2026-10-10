@@ -82,7 +82,28 @@ jobs:
         run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
 
   android-generated:
+    name: android-generated (${{ matrix.abi }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tauri_target: aarch64
+            rust_target: aarch64-linux-android
+            abi: arm64-v8a
+            require_16k: true
+          - tauri_target: armv7
+            rust_target: armv7-linux-androideabi
+            abi: armeabi-v7a
+            require_16k: false
+          - tauri_target: i686
+            rust_target: i686-linux-android
+            abi: x86
+            require_16k: false
+          - tauri_target: x86_64
+            rust_target: x86_64-linux-android
+            abi: x86_64
+            require_16k: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -102,7 +123,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
-          targets: aarch64-linux-android
+          targets: ${{ matrix.rust_target }}
       - uses: actions/setup-node@v7
         with:
           node-version: '24.21.0'
@@ -126,9 +147,9 @@ jobs:
             echo "Generated Android project still requires preview API 37" >&2
             exit 1
           fi
-      - name: Build aarch64 Android APK
-        run: pnpm tauri android build --debug --apk --target aarch64 --ci
-      - name: Validate packaged native libraries
+      - name: Build ${{ matrix.abi }} Android APK
+        run: pnpm tauri android build --debug --apk --target ${{ matrix.tauri_target }} --ci
+      - name: Validate ${{ matrix.abi }} packaged native libraries
         shell: bash
         run: |
           set -euo pipefail
@@ -138,7 +159,7 @@ jobs:
             echo "No generated APK found" >&2
             exit 1
           fi
-          echo "Validating $APK"
+          echo "Validating $APK for ${{ matrix.abi }}"
 
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
 
@@ -146,32 +167,36 @@ jobs:
           mkdir -p /tmp/scanner-apk
           unzip -q "$APK" 'lib/*/*.so' -d /tmp/scanner-apk
 
-          found_core=0
-          found_jni=0
           while IFS= read -r -d '' so; do
             echo "Inspecting $so"
-
-            while read -r alignment; do
-              value=$((alignment))
-              if (( value < 16384 )); then
-                echo "$so has LOAD alignment $alignment (< 16 KB)" >&2
-                exit 1
-              fi
-            done < <(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }')
-
-            if nm -D "$so" | grep -q 'scanner_native_session_create'; then
-              found_core=1
-            fi
-            if nm -D "$so" | grep -q 'Java_com_xtreemze_scanner_sensors_ScannerCoreIngestBridge_nativeCreate'; then
-              found_jni=1
+            if [[ "${{ matrix.require_16k }}" == "true" ]]; then
+              while read -r alignment; do
+                value=$((alignment))
+                if (( value < 16384 )); then
+                  echo "$so has LOAD alignment $alignment (< 16 KB)" >&2
+                  exit 1
+                fi
+              done < <(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }')
             fi
           done < <(find /tmp/scanner-apk -type f -name '*.so' -print0)
 
-          if (( found_core != 1 )); then
-            echo "scanner-core ingestion ABI symbol not found in packaged libraries" >&2
+          CORE_SO="/tmp/scanner-apk/lib/${{ matrix.abi }}/libscanner_lib.so"
+          JNI_SO="/tmp/scanner-apk/lib/${{ matrix.abi }}/libscanner_sensors_jni.so"
+
+          if [[ ! -f "$CORE_SO" ]]; then
+            echo "Missing Scanner Rust library for ${{ matrix.abi }}: $CORE_SO" >&2
             exit 1
           fi
-          if (( found_jni != 1 )); then
-            echo "scanner-sensors JNI entry point not found in packaged libraries" >&2
+          if [[ ! -f "$JNI_SO" ]]; then
+            echo "Missing Scanner JNI shim for ${{ matrix.abi }}: $JNI_SO" >&2
             exit 1
           fi
+
+          nm -D "$CORE_SO" | grep -q 'scanner_native_session_create' || {
+            echo "scanner-core ingestion ABI symbol missing from $CORE_SO" >&2
+            exit 1
+          }
+          nm -D "$JNI_SO" | grep -q 'Java_com_xtreemze_scanner_sensors_ScannerCoreIngestBridge_nativeCreate' || {
+            echo "ScannerCoreIngestBridge JNI entry point missing from $JNI_SO" >&2
+            exit 1
+          }

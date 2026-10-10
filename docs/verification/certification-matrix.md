@@ -33,7 +33,7 @@ Every certification record must include:
 | Browser camera fallback | capability detection only | Physical mobile browser permission flow, capture start/stop, orientation change, denied/revoked permission cases |
 | Browser IMU fallback | capability detection only | Physical mobile browser with motion permission where applicable; timestamps and orientation/motion sanity checks |
 | Tauri desktop host | scaffold only | macOS/Windows/Linux build evidence separately; startup and IPC capability query |
-| Tauri Android | native plugin + ARCore/JNI ingestion + native frame-pump source; host CI only | Android build + physical-device launch; native plugin permission, ARCore frame-pump, JNI symbol-resolution, and lifecycle evidence |
+| Tauri Android | generated aarch64 Tauri APK builds in CI; packaged Scanner Rust/JNI symbols and 16 KB alignment verified; physical runtime not yet verified | Generated builds for every supported ABI plus physical-device launch; native plugin permission, ARCore frame-pump, JNI runtime symbol-resolution, and lifecycle evidence |
 | Tauri iOS | scaffold only | iOS build + physical-device launch; native plugin permission and lifecycle evidence |
 | Camera-only scanning | domain contracts only | Physical device with no hardware depth; live pose/capture/reconstruction session |
 | Software-depth scanning | domain contracts only | Supported physical ARCore/ARKit device; depth/confidence ingestion and reconstruction evidence |
