@@ -90,10 +90,9 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v4
-      - name: Install Android 37 and NDK r30 toolchain
+      - name: Install Android 17 preview and NDK r30 toolchain
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager \
+          sdkmanager --channel=3 \
             "platform-tools" \
             "platforms;android-37" \
             "build-tools;37.0.0" \
