@@ -107,12 +107,12 @@ fn retain_scanner_core_ingest_symbols() {
     // Tauri Rust library. Taking and black-boxing these addresses prevents dead-code
     // elimination from dropping the exported symbols without creating another state owner.
     let symbols = [
-        scanner_core::scanner_native_session_create as usize,
-        scanner_core::scanner_native_session_destroy as usize,
-        scanner_core::scanner_native_ingest_camera_metadata as usize,
-        scanner_core::scanner_native_ingest_imu as usize,
-        scanner_core::scanner_native_ingest_depth as usize,
-        scanner_core::scanner_native_ingest_stats as usize,
+        scanner_core::native_ingest::scanner_native_session_create as usize,
+        scanner_core::native_ingest::scanner_native_session_destroy as usize,
+        scanner_core::native_ingest::scanner_native_ingest_camera_metadata as usize,
+        scanner_core::native_ingest::scanner_native_ingest_imu as usize,
+        scanner_core::native_ingest::scanner_native_ingest_depth as usize,
+        scanner_core::native_ingest::scanner_native_ingest_stats as usize,
     ];
     std::hint::black_box(symbols);
 }
