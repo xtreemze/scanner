@@ -79,6 +79,7 @@ class ScannerSensorAdapter(private val activity: Activity) : SensorEventListener
 
     private var latestAcceleration: DoubleArray? = null
     private var latestAngularVelocity: DoubleArray? = null
+    private var userRequestedArCoreInstall = true
 
     var onMotionSample: ((AndroidMotionSample) -> Unit)? = null
 
@@ -100,9 +101,17 @@ class ScannerSensorAdapter(private val activity: Activity) : SensorEventListener
     }
 
     fun ensureArCoreReady(): Boolean =
-        when (ArCoreApk.getInstance().requestInstall(activity, true)) {
+        when (
+            ArCoreApk.getInstance().requestInstall(
+                activity,
+                userRequestedArCoreInstall,
+            )
+        ) {
             InstallStatus.INSTALLED -> true
-            InstallStatus.INSTALL_REQUESTED -> false
+            InstallStatus.INSTALL_REQUESTED -> {
+                userRequestedArCoreInstall = false
+                false
+            }
         }
 
     fun configureSession(
