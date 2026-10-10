@@ -34,6 +34,8 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
     private val adapter = ScannerSensorAdapter(activity)
     private var session: Session? = null
     private var ingestBridge: ScannerCoreIngestBridge? = null
+    private var framePump: ScannerArCoreFramePump? = null
+    private var framePumpError: String? = null
 
     @Command
     fun capabilities(invoke: Invoke) {
@@ -90,41 +92,90 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
             return
         }
 
-        try {
-            val activeSession = session ?: Session(activity).also { session = it }
-            val bridge = ScannerCoreIngestBridge.create(args.deviceId, args.epoch)
-                ?: throw IllegalStateException("scanner-core ingestion ABI is unavailable")
+        activity.runOnUiThread {
+            try {
+                stopCapture(closeSession = args.resetTracking)
 
-            ingestBridge?.close()
-            ingestBridge = bridge
-            adapter.onMotionSample = { sample ->
-                bridge.ingestMotion(sample)
+                if (!adapter.ensureArCoreReady()) {
+                    invoke.reject("ARCore installation was requested; retry after the activity resumes")
+                    return@runOnUiThread
+                }
+
+                val activeSession = session ?: Session(activity).also { session = it }
+                val bridge = ScannerCoreIngestBridge.create(args.deviceId, args.epoch)
+                    ?: throw IllegalStateException("scanner-core ingestion ABI is unavailable")
+
+                ingestBridge = bridge
+                framePumpError = null
+                adapter.onMotionSample = { sample ->
+                    bridge.ingestMotion(sample)
+                }
+
+                adapter.configureSession(
+                    activeSession,
+                    preferRawDepth = args.preferRawDepth,
+                    useNativeFramePump = true,
+                )
+                activeSession.resume()
+
+                framePump = ScannerArCoreFramePump(
+                    session = activeSession,
+                    onFrame = { frame -> ingestFrame(frame) },
+                    onFailure = { error ->
+                        framePumpError = error.message ?: error.javaClass.simpleName
+                        adapter.stopImu()
+                        try {
+                            activeSession.pause()
+                        } catch (_: Exception) {
+                            // Preserve the original frame-pump failure for diagnostics.
+                        }
+                    },
+                ).also { it.start() }
+
+                adapter.startImu()
+                invoke.resolve()
+            } catch (error: Exception) {
+                stopCapture(closeSession = true)
+                invoke.reject("Unable to start ARCore session: ${error.message ?: error.javaClass.simpleName}")
             }
-
-            adapter.configureSession(activeSession)
-            activeSession.resume()
-            adapter.startImu()
-            invoke.resolve()
-        } catch (error: Exception) {
-            invoke.reject("Unable to start ARCore session: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
     @Command
     fun stopSession(invoke: Invoke) {
+        activity.runOnUiThread {
+            stopCapture(closeSession = true)
+            invoke.resolve()
+        }
+    }
+
+    private fun stopCapture(closeSession: Boolean) {
+        framePump?.stop()
+        framePump = null
         adapter.stopImu()
         adapter.onMotionSample = null
-        session?.pause()
+
+        session?.let { activeSession ->
+            try {
+                activeSession.pause()
+            } catch (_: Exception) {
+                // A session may already be paused after lifecycle or pump failure.
+            }
+            if (closeSession) {
+                activeSession.close()
+                session = null
+            }
+        }
+
         ingestBridge?.close()
         ingestBridge = null
-        invoke.resolve()
     }
 
     /**
-     * Called by the native ARCore update/render loop after Session.update().
+     * Receives fresh Frames from ScannerArCoreFramePump after Session.update().
      *
-     * This is deliberately not a Tauri command: high-rate camera/depth payloads must not route
-     * through the WebView. The host integration should call this method directly for each Frame.
+     * This remains callable by a future renderer-owned loop, but it is deliberately not a Tauri
+     * command: high-rate camera/depth payloads must never route through the WebView.
      */
     fun ingestFrame(frame: com.google.ar.core.Frame): AndroidFrameIngestReport? {
         val bridge = ingestBridge ?: return null
@@ -147,6 +198,8 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
         result.put("droppedDepthFrames", stats.droppedDepthFrames)
         result.put("queuedObservations", stats.queuedObservations)
         result.put("queuedDepthFrames", stats.queuedDepthFrames)
+        result.put("framePumpActive", framePump?.isRunning == true)
+        result.put("framePumpError", framePumpError)
         invoke.resolve(result)
     }
 
@@ -159,19 +212,39 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun onPause() {
         super.onPause()
+        framePump?.stop()
         adapter.stopImu()
-        session?.pause()
+        session?.let {
+            try {
+                it.pause()
+            } catch (_: Exception) {
+                // Lifecycle pause is best-effort; the explicit command reports failures.
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        session?.let {
-            try {
-                it.resume()
-                adapter.startImu()
-            } catch (_: Exception) {
-                // The control command will surface a concrete failure on the next explicit start.
+        val activeSession = session ?: return
+        val activeBridge = ingestBridge ?: return
+
+        try {
+            activeSession.resume()
+            framePump = ScannerArCoreFramePump(
+                session = activeSession,
+                onFrame = { frame -> ingestFrame(frame) },
+                onFailure = { error ->
+                    framePumpError = error.message ?: error.javaClass.simpleName
+                    adapter.stopImu()
+                },
+            ).also { it.start() }
+
+            adapter.onMotionSample = { sample ->
+                activeBridge.ingestMotion(sample)
             }
+            adapter.startImu()
+        } catch (error: Exception) {
+            framePumpError = error.message ?: error.javaClass.simpleName
         }
     }
 }
