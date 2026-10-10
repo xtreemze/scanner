@@ -46,6 +46,23 @@ jobs:
       - name: Validate Android JNI shim against scanner-core ABI
         run: |
           cc -std=c11 -Wall -Wextra -Werror -fsyntax-only             -I"$JAVA_HOME/include"             -I"$JAVA_HOME/include/linux"             -Inative             plugins/scanner-sensors/android/src/main/cpp/scanner_core_jni.c
+      - name: Validate 16 KB JNI link alignment recipe
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -shared -fPIC             -I"$JAVA_HOME/include"             -I"$JAVA_HOME/include/linux"             -Inative             plugins/scanner-sensors/android/src/main/cpp/scanner_core_jni.c             -ldl             -Wl,-z,max-page-size=16384             -Wl,-z,common-page-size=16384             -o /tmp/libscanner_sensors_jni.so
+          readelf -lW /tmp/libscanner_sensors_jni.so | awk '
+            $1 == "LOAD" {
+              if ($NF != "0x4000") {
+                printf "unexpected LOAD alignment: %s\n", $NF > "/dev/stderr"
+                exit 1
+              }
+              seen = 1
+            }
+            END {
+              if (!seen) {
+                print "no LOAD segments found" > "/dev/stderr"
+                exit 1
+              }
+            }'
 
   rust:
     runs-on: ubuntu-latest
