@@ -8,10 +8,12 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.Image
+import android.os.Build
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
+import com.google.ar.core.ArCoreApk.InstallStatus
 import com.google.ar.core.TrackingState
 import kotlin.math.max
 
@@ -95,15 +97,36 @@ class ScannerSensorAdapter(private val activity: Activity) : SensorEventListener
         )
     }
 
-    fun configureSession(session: Session): Config {
+    fun ensureArCoreReady(): Boolean =
+        when (ArCoreApk.getInstance().requestInstall(activity, true)) {
+            InstallStatus.INSTALLED -> true
+            InstallStatus.INSTALL_REQUESTED -> false
+        }
+
+    fun configureSession(
+        session: Session,
+        preferRawDepth: Boolean = true,
+        useNativeFramePump: Boolean = true,
+    ): Config {
         val config = session.config
 
         config.depthMode = when {
-            session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ->
+            preferRawDepth && session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ->
                 Config.DepthMode.RAW_DEPTH_ONLY
             session.isDepthModeSupported(Config.DepthMode.AUTOMATIC) ->
                 Config.DepthMode.AUTOMATIC
+            session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ->
+                Config.DepthMode.RAW_DEPTH_ONLY
             else -> Config.DepthMode.DISABLED
+        }
+
+        config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+
+        if (useNativeFramePump) {
+            require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                "Native ARCore frame pump requires Android 8.1/API 27 or newer"
+            }
+            config.textureUpdateMode = Config.TextureUpdateMode.EXPOSE_HARDWARE_BUFFER
         }
 
         session.configure(config)
