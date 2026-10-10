@@ -50,7 +50,7 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
         // Camera-session torch control has not yet been proven safe with ARCore.
         result.put("flashSessionControl", false)
         result.put("hdr", false)
-        result.put("platformTracking", capabilities.arCoreSupported)
+        result.put("platformTracking", capabilities.arCoreSupported && capabilities.nativeFramePump)
         invoke.resolve(result)
     }
 
@@ -230,6 +230,7 @@ class ScannerSensorsPlugin(private val activity: Activity) : Plugin(activity) {
 
         try {
             activeSession.resume()
+            framePumpError = null
             framePump = ScannerArCoreFramePump(
                 session = activeSession,
                 onFrame = { frame -> ingestFrame(frame) },
