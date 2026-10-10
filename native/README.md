@@ -1,6 +1,6 @@
 # Native mobile sensor adapters
 
-This directory contains the platform acquisition layer that will be wired into the Tauri 2 mobile host.
+This directory retains the platform-neutral native ABI and the original adapter baselines. The active Tauri mobile integration lives under `plugins/scanner-sensors/`.
 
 The source is intentionally separate from `scanner-core`:
 
@@ -48,7 +48,7 @@ It has not yet been compiled or device-certified in the Tauri iOS project.
 
 Use ARCore SDK `com.google.ar:core:1.56.0` when wiring the Android library. The project is AR Optional: camera-only operation must remain possible.
 
-It has not yet been compiled or device-certified in the Tauri Android project.
+The active Android plugin now owns ARCore lifecycle/configuration, a native `Session.update()` frame pump on API 27+, IMU capture, and JNI ingestion into scanner-core. It is still not Android-build or device-certified.
 
 ## Verification boundary
 
@@ -70,4 +70,4 @@ The intended path is:
 
 Tauri commands remain the low-rate control plane. Do not serialize camera, depth, confidence, or high-rate IMU buffers through the WebView.
 
-The native wrappers are not yet connected to generated Tauri mobile projects, so this ABI is unit-tested but not device-certified.
+The native ABI is connected through the Tauri mobile plugin on both platforms. Host CI validates the Rust ABI and Android JNI C shim, but generated mobile projects and physical hardware remain the certification boundary.
