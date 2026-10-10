@@ -91,15 +91,19 @@ jobs:
           - tauri_target: aarch64
             rust_target: aarch64-linux-android
             abi: arm64-v8a
+            require_16k: true
           - tauri_target: armv7
             rust_target: armv7-linux-androideabi
             abi: armeabi-v7a
+            require_16k: false
           - tauri_target: i686
             rust_target: i686-linux-android
             abi: x86
+            require_16k: false
           - tauri_target: x86_64
             rust_target: x86_64-linux-android
             abi: x86_64
+            require_16k: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -165,13 +169,15 @@ jobs:
 
           while IFS= read -r -d '' so; do
             echo "Inspecting $so"
-            while read -r alignment; do
-              value=$((alignment))
-              if (( value < 16384 )); then
-                echo "$so has LOAD alignment $alignment (< 16 KB)" >&2
-                exit 1
-              fi
-            done < <(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }')
+            if [[ "${{ matrix.require_16k }}" == "true" ]]; then
+              while read -r alignment; do
+                value=$((alignment))
+                if (( value < 16384 )); then
+                  echo "$so has LOAD alignment $alignment (< 16 KB)" >&2
+                  exit 1
+                fi
+              done < <(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }')
+            fi
           done < <(find /tmp/scanner-apk -type f -name '*.so' -print0)
 
           CORE_SO="/tmp/scanner-apk/lib/${{ matrix.abi }}/libscanner_lib.so"
