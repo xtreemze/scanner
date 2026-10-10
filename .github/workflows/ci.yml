@@ -140,7 +140,7 @@ jobs:
           fi
           echo "Validating $APK"
 
-          zipalign -c -P 16 -v 4 "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
 
           rm -rf /tmp/scanner-apk
           mkdir -p /tmp/scanner-apk
