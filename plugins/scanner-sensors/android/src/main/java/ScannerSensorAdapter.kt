@@ -23,6 +23,7 @@ data class AndroidNativeCapabilities(
     val arCoreSupported: Boolean,
     val rawDepth: Boolean,
     val flashHardware: Boolean,
+    val nativeFramePump: Boolean,
 )
 
 data class AndroidPoseSample(
@@ -94,6 +95,7 @@ class ScannerSensorAdapter(private val activity: Activity) : SensorEventListener
             arCoreSupported = arCoreSupported,
             rawDepth = rawDepth,
             flashHardware = packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH),
+            nativeFramePump = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1,
         )
     }
 
