@@ -90,12 +90,12 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v4
-      - name: Install Android 17 preview and NDK r30 toolchain
+      - name: Install stable Android 16 and NDK r30 toolchain
         run: |
-          sdkmanager --channel=3 \
+          sdkmanager \
             "platform-tools" \
-            "platforms;android-37" \
-            "build-tools;37.0.0" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
             "ndk;30.0.16248370" \
             "cmake;3.22.1"
           echo "NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
@@ -111,6 +111,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Generate Tauri Android project
         run: pnpm tauri android init --ci --skip-targets-install
+      - name: Keep generated Android project on latest stable SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -RIl --include='*.gradle.kts' --include='*.gradle' '37' src-tauri/gen/android |
+            while IFS= read -r file; do
+              sed -i -E \
+                -e 's/(compileSdk[[:space:]]*=[[:space:]]*)37/\136/g' \
+                -e 's/(targetSdk[[:space:]]*=[[:space:]]*)37/\136/g' \
+                "$file"
+            done
+          if grep -RInE --include='*.gradle.kts' --include='*.gradle' '(compileSdk|targetSdk)[[:space:]]*=[[:space:]]*37' src-tauri/gen/android; then
+            echo "Generated Android project still requires preview API 37" >&2
+            exit 1
+          fi
       - name: Build aarch64 Android APK
         run: pnpm tauri android build --debug --apk --target aarch64 --ci
       - name: Validate packaged native libraries
