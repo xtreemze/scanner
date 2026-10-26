@@ -25,6 +25,7 @@ pub mod repair;
 pub mod session;
 pub mod spatial;
 pub mod structural;
+pub mod triangulation;
 
 pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchronizer, SessionClockSynchronizer};
 pub use export::{
@@ -63,6 +64,10 @@ pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
     ConstraintEvaluation, ConstraintRejection, ConstraintSource, OptimizationReport, SessionWorld, SolveReport,
     SpatialConstraint, SpatialConstraintKind, Uncertainty,
+};
+pub use triangulation::{
+    triangulate_session_rays, SessionRay, TriangulatedPoint, TriangulationConfig,
+    TriangulationFailure,
 };
 pub use structural::{
     LockState, StructuralSurface, StructuralSurfaceKind, SurfaceEvent, SurfaceTransitionError,
