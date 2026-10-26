@@ -16,6 +16,7 @@ pub mod appearance;
 pub mod appearance_pipeline;
 pub mod clock;
 pub mod export;
+pub mod fusion_admission;
 pub mod guidance;
 pub mod native_ingest;
 pub mod observation;
@@ -29,6 +30,10 @@ pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchroniz
 pub use export::{
     export_preview_mesh_glb, export_preview_mesh_glb_with_material, export_reconstruction_glb,
     export_reconstruction_glb_with_material, GlbExportError,
+};
+pub use fusion_admission::{
+    DepthAdmissionConfig, DepthFusionCandidate, DepthFusionDecision, DepthFusionGate,
+    DepthScaleEvidence,
 };
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
