@@ -45,6 +45,12 @@ The integration architecture is documented in `docs/decisions/0012-native-adapte
 
 Do not add a capability to `platform_capabilities` until the corresponding Tauri adapter path is compiled and operational for that session.
 
+## Research-based core primitives
+
+The core exposes `DepthFusionGate` to decide which retained depth frames are fresh, timestamp-consistent metric fusion candidates; use one gate per session and supply `DepthScaleEvidence` explicitly. It does not discard archived depth frames or substitute for pose, calibration, and uncertainty validation. `triangulate_session_rays` handles finite, forward two-view geometry **only after** calibration, feature correspondence, clock synchronization, and transforms into SessionWorld.
+
+Both primitives have deterministic unit tests through the standard scanner-core `cargo test` command. The production reconstruction and peer pipelines still need to call them; see [the research plan](docs/research/2026-10-mobile-reconstruction.md) and [ADR 0016](docs/decisions/0016-independent-depth-and-multiview-geometry.md).
+
 ## Verification claims
 
 A successful web build proves only type checking and Vite production bundling. Passing scanner-core tests proves only the deterministic Rust domain contracts covered by those tests. Tauri desktop builds, Android/iOS compilation, PWA installation, camera/IMU/depth capture, and physical multi-device calibration require separate evidence.
