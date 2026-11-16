@@ -16,6 +16,7 @@ pub mod appearance;
 pub mod appearance_pipeline;
 pub mod clock;
 pub mod export;
+pub mod fusion_admission;
 pub mod guidance;
 pub mod native_ingest;
 pub mod observation;
@@ -24,11 +25,16 @@ pub mod repair;
 pub mod session;
 pub mod spatial;
 pub mod structural;
+pub mod triangulation;
 
 pub use clock::{ClockExchange, ClockModel, ClockSyncError, DeviceClockSynchronizer, SessionClockSynchronizer};
 pub use export::{
     export_preview_mesh_glb, export_preview_mesh_glb_with_material, export_reconstruction_glb,
     export_reconstruction_glb_with_material, GlbExportError,
+};
+pub use fusion_admission::{
+    DepthAdmissionConfig, DepthFusionCandidate, DepthFusionDecision, DepthFusionGate,
+    DepthScaleEvidence,
 };
 pub use guidance::{
     choose_next_action, recommend_for_confidence, ConfidenceField, GuidanceCandidate,
@@ -58,6 +64,10 @@ pub use session::{ScanSession, SESSION_SCHEMA_VERSION};
 pub use spatial::{
     ConstraintEvaluation, ConstraintRejection, ConstraintSource, OptimizationReport, SessionWorld, SolveReport,
     SpatialConstraint, SpatialConstraintKind, Uncertainty,
+};
+pub use triangulation::{
+    triangulate_session_rays, SessionRay, TriangulatedPoint, TriangulationConfig,
+    TriangulationFailure,
 };
 pub use structural::{
     LockState, StructuralSurface, StructuralSurfaceKind, SurfaceEvent, SurfaceTransitionError,

@@ -47,6 +47,10 @@ The preferred ownership chain is:
 
 See [system architecture](docs/architecture/system.md), [guidance/confidence](docs/architecture/guidance.md), the [raw observation/domain authority ADR](docs/decisions/0003-raw-observations-and-domain-authority.md), and the [platform/device certification matrix](docs/verification/certification-matrix.md).
 
+## Research transfer (October 2026)
+
+See [mobile reconstruction research and implementation priorities](docs/research/2026-10-mobile-reconstruction.md) and [ADR 0016](docs/decisions/0016-independent-depth-and-multiview-geometry.md). The Rust core now exposes a **metric depth fusion admission gate** and **guarded two-view SessionWorld triangulation** with deterministic unit tests. These are building blocks, not evidence of an end-to-end scanner: the actual depth-to-mesh worker, synchronized peer correspondence pipeline, and physical device certification remain pending. The existing sparse weighted voxel/preview mesh implementation is not a TSDF.
+
 ## Development
 
 See [README_DEV.md](README_DEV.md).
